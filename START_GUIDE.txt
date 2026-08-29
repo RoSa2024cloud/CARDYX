@@ -1,0 +1,41 @@
+=======================================================================
+               CARDYX - LOKALE ENTWICKLUNGSUMGEBUNG STARTEN
+=======================================================================
+
+Immer wenn du an CARDYX weiterarbeitest, öffnest du VS Code und startest 
+die drei Komponenten (Infrastruktur, Backend, Frontend) nacheinander.
+
+-----------------------------------------------------------------------
+1. DATENBANKEN STARTEN (DOCKER)
+-----------------------------------------------------------------------
+Stelle sicher, dass die App "Docker Desktop" im Hintergrund läuft.
+Öffne ein Terminal im Hauptverzeichnis "CARDYX" und führe aus:
+
+   docker compose up -d
+
+(Zum Stoppen der Datenbanken am Feierabend: docker compose down)
+
+-----------------------------------------------------------------------
+2. BACKEND STARTEN (API & DATABASE)
+-----------------------------------------------------------------------
+Öffne ein neues Terminal im Unterordner "backend" und führe aus:
+
+   cd backend
+   npm run dev
+
+-> Das Backend läuft live auf: http://localhost:4000/
+-> Test-Datenbank-Seed unter: http://localhost:4000/api/v1/test-seed
+
+-----------------------------------------------------------------------
+3. FRONTEND STARTEN (USER INTERFACE)
+-----------------------------------------------------------------------
+Öffne ein neues Terminal im Unterordner "frontend" und führe aus:
+
+   cd frontend
+   npm run dev
+
+-> Das CARDYX Dashboard läuft live auf: http://localhost:3000/
+
+=======================================================================
+                 PROJEKT-STATUS NACH PHASE 0: ERFOLGREICH
+=======================================================================

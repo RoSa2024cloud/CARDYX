@@ -1,0 +1,29 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Tabelle für getrackte Cardano-Token
+model Token {
+  id        String   @id @default(uuid())
+  policyId  String   @unique
+  assetName String
+  ticker    String?
+  priceAda  Float    @default(0.0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// Tabelle für analysierte Wallets
+model Wallet {
+  id          String   @id @default(uuid())
+  address     String   @unique
+  stakeAddress String?
+  label       String?
+  lastChecked DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}

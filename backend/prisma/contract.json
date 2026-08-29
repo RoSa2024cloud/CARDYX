@@ -1,0 +1,33 @@
+{
+  "spaces": {
+    "app": {
+      "operations": [
+        {
+          "type": "create_table",
+          "name": "Token",
+          "columns": [
+            { "name": "id", "type": "text", "primary": true },
+            { "name": "policyId", "type": "text", "unique": true },
+            { "name": "assetName", "type": "text" },
+            { "name": "ticker", "type": "text", "nullable": true },
+            { "name": "priceAda", "type": "doublePrecision", "default": 0.0 },
+            { "name": "updatedAt", "type": "timestamp", "defaultNow": true },
+            { "name": "createdAt", "type": "timestamp", "defaultNow": true }
+          ]
+        },
+        {
+          "type": "create_table",
+          "name": "Wallet",
+          "columns": [
+            { "name": "id", "type": "text", "primary": true },
+            { "name": "address", "type": "text", "unique": true },
+            { "name": "stakeAddress", "type": "text", "nullable": true },
+            { "name": "label", "type": "text", "nullable": true },
+            { "name": "lastChecked", "type": "timestamp", "defaultNow": true },
+            { "name": "createdAt", "type": "timestamp", "defaultNow": true }
+          ]
+        }
+      ]
+    }
+  }
+}

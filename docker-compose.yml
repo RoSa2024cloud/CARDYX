@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  cardyx-db:
+    image: postgres:15-alpine
+    container_name: cardyx-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: cardyx_admin
+      POSTGRES_PASSWORD: secret_local_password
+      POSTGRES_DB: cardyx_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  cardyx-cache:
+    image: redis:7-alpine
+    container_name: cardyx-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
