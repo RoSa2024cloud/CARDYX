@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Wallet, Plus, ShieldCheck } from 'lucide-react';
+import { API_URL } from '../lib/api';
 
 interface WalletItem {
   id: string;
@@ -30,7 +31,7 @@ export default function WalletRadar({ wallets, onWalletAdded }: WalletRadarProps
     setIsSubmitting(true);
     setWalletMessage(null);
 
-    fetch('http://localhost:4000/api/wallets', {
+    fetch(`${API_URL}/api/wallets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

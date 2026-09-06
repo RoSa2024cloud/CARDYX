@@ -155,6 +155,7 @@ Das Dashboard läuft anschließend auf [http://localhost:3000](http://localhost:
 | --- | --- |
 | [CARDYX MASTERPLAN.md](CARDYX%20MASTERPLAN.md) | Vision, Produktbereiche, Geschäftsmodell, Architektur |
 | [START_GUIDE.txt](START_GUIDE.txt) | Lokale Entwicklungsumgebung in 3 Schritten |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Schritt-für-Schritt-Anleitung für den Produktivbetrieb (Vercel + Railway) |
 | [backend/README.md](backend/README.md) | API-Server, Scripts & Datenbank |
 | [frontend/README.md](frontend/README.md) | Web-Dashboard, Scripts & Komponenten |
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { API_URL } from '../lib/api';
 import { ChartCandle, formatUsd } from '../lib/tokens';
 
 type Range = '7' | '30';
@@ -34,7 +35,7 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
         setLoading(true);
         setError(false);
       }
-      fetch(`http://localhost:4000/api/market/chart/${encodeURIComponent(tokenId)}?days=${range}`)
+      fetch(`${API_URL}/api/market/chart/${encodeURIComponent(tokenId)}?days=${range}`)
         .then((res) => {
           if (!res.ok) throw new Error('Fehler');
           return res.json();

@@ -12,6 +12,7 @@ import WalletRadar from './components/WalletRadar';
 import TokenDetailModal from './components/TokenDetailModal';
 import TradePanel from './components/TradePanel';
 import { WalletProvider } from './components/WalletProvider';
+import { API_URL } from './lib/api';
 import { MarketToken } from './lib/tokens';
 
 export default function Dashboard() {
@@ -40,7 +41,7 @@ export default function Dashboard() {
 
   // Top-50-Marktdaten vom Backend abrufen (silent = Hintergrund-Update)
   const fetchMarket = (silent = false) => {
-    fetch('http://localhost:4000/api/market/top50')
+    fetch(`${API_URL}/api/market/top50`)
       .then((res) => {
         if (!res.ok) throw new Error('Fehler beim Abruf');
         return res.json();
@@ -63,7 +64,7 @@ export default function Dashboard() {
 
   // Registrierte Wallets abrufen
   const fetchWallets = () => {
-    fetch('http://localhost:4000/api/wallets')
+    fetch(`${API_URL}/api/wallets`)
       .then((res) => res.json())
       .then((json) => {
         if (json.success) setWallets(json.data);

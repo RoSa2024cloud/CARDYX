@@ -8,12 +8,37 @@ const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Datenbankverbindung: Online via DATABASE_URL (z.B. Railway/Neon),
+// lokal mit Docker-Compose-Fallback. Secrets niemals im Code!
+const DATABASE_URL =
+  process.env.DATABASE_URL ??
+  'postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev?schema=public';
+
 const pool = new Pool({
-  connectionString: "postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev?schema=public"
+  connectionString: DATABASE_URL,
+  // Managed-Postgres-Anbieter (Railway, Neon, Supabase) verlangen SSL
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
 });
 
 app.use(express.json());
-app.use(cors());
+
+// CORS: Online nur die Frontend-Domain erlauben, lokal alles offen.
+const ALLOWED_ORIGINS = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map((o) => o.trim())
+  : '*';
+app.use(
+  cors(
+    ALLOWED_ORIGINS === '*'
+      ? {}
+      : {
+          origin: (origin, callback) => {
+            // Server-zu-Server (kein Origin) und erlaubte Domains durchlassen
+            if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+            callback(new Error(`CORS blockiert: ${origin}`));
+          },
+        }
+  )
+);
 
 // Diese Funktion prüft beim Starten des Backends, ob die Tabelle existiert, und legt sie bei Bedarf an
 async function initDatabase() {

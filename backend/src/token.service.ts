@@ -7,7 +7,15 @@ export const TRACKED_TOKENS = [
   { ticker: "MIN", policyId: "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6", assetName: "4d494e" }
 ];
 
-const db = new Client({ connectionString: "postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev" });
+// Gleiche Env-basierte Konfiguration wie der API-Server (DATABASE_URL online).
+const CONNECTION_STRING =
+  process.env.DATABASE_URL ??
+  'postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev';
+
+const db = new Client({
+  connectionString: CONNECTION_STRING,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
+});
 db.connect().catch(err => console.error("Datenbank-Verbindungsfehler:", err));
 
 export async function updateAndGetTokens() {
