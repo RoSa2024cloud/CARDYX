@@ -1,89 +1,167 @@
-import React from 'react';
-import { LineChart, Wallet, Search, BookOpen, TrendingUp } from 'lucide-react';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { Dog, Zap } from 'lucide-react';
+import Navbar from './components/Navbar';
+import TickerBar from './components/TickerBar';
+import FeaturedCarousel from './components/FeaturedCarousel';
+import FeaturedTokens from './components/FeaturedTokens';
+import TrendingRow from './components/TrendingRow';
+import TokenTable from './components/TokenTable';
+import WalletRadar from './components/WalletRadar';
+import TokenDetailModal from './components/TokenDetailModal';
+import TradePanel from './components/TradePanel';
+import { WalletProvider } from './components/WalletProvider';
+import { MarketToken } from './lib/tokens';
 
 export default function Dashboard() {
+  const [tokens, setTokens] = useState<MarketToken[]>([]);
+  const [adaPriceUsd, setAdaPriceUsd] = useState<number | null>(null);
+  const [loadingMarket, setLoadingMarket] = useState(true);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [selectedToken, setSelectedToken] = useState<MarketToken | null>(null);
+  const [tradeToken, setTradeToken] = useState<MarketToken | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [tradeOpen, setTradeOpen] = useState(false);
+
+  // Klick auf einen Token öffnet das Analyse-Fenster UND stellt das Trade-Panel ein
+  const openToken = (token: MarketToken) => {
+    setSelectedToken(token);
+    setTradeToken(token);
+    setModalOpen(true);
+  };
+
+  // Kauf-Button im Analyse-Fenster öffnet das schwebende Trade-Panel
+  const openTrade = () => {
+    setModalOpen(false);
+    setTradeOpen(true);
+  };
+
+  // Top-50-Marktdaten vom Backend abrufen (silent = Hintergrund-Update)
+  const fetchMarket = (silent = false) => {
+    fetch('http://localhost:4000/api/market/top50')
+      .then((res) => {
+        if (!res.ok) throw new Error('Fehler beim Abruf');
+        return res.json();
+      })
+      .then((json) => {
+        if (json.success && json.data) {
+          setTokens(json.data.tokens ?? []);
+          setAdaPriceUsd(json.data.adaPriceUsd ?? null);
+          setPriceError(null);
+        }
+        setLoadingMarket(false);
+      })
+      .catch(() => {
+        if (!silent) {
+          setPriceError('Verbindung zum Backend fehlgeschlagen – Live-Daten aktuell nicht verfügbar.');
+          setLoadingMarket(false);
+        }
+      });
+  };
+
+  // Registrierte Wallets abrufen
+  const fetchWallets = () => {
+    fetch('http://localhost:4000/api/wallets')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setWallets(json.data);
+      })
+      .catch((err) => console.error('Fehler:', err));
+  };
+
+  useEffect(() => {
+    fetchMarket();
+    fetchWallets();
+
+    // Automatischer Taktgeber für die Marktdaten (alle 60 Sekunden)
+    const marketInterval = setInterval(() => fetchMarket(true), 60_000);
+    return () => clearInterval(marketInterval);
+  }, []);
+
+  // Abgeleitete Reihen aus den Live-Daten
+  // Featured: alle Top 50 in Market-Cap-Reihenfolge (als Laufschrift)
+  const featured = tokens;
+  const trending = useMemo(
+    () =>
+      [...tokens]
+        .filter((t) => t.change24h !== 0)
+        .sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h))
+        .slice(0, 10),
+    [tokens]
+  );
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans">
-      {/* Top Navigation */}
-      <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white tracking-wider">CX</div>
-          <span className="text-xl font-bold tracking-tight text-white">CARDYX</span>
-        </div>
-        <div className="flex items-center space-x-2 bg-slate-800 rounded-lg px-3 py-1.5 border border-slate-700 w-64">
-          <Search className="w-4 h-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Token Name / PolicyID..." 
-            className="bg-transparent border-none outline-none text-sm placeholder-slate-500 w-full"
+    <WalletProvider>
+    <div className="min-h-screen bg-[#05070d] text-slate-200 antialiased">
+      <Navbar />
+      <TickerBar adaPriceUsd={adaPriceUsd} />
+
+      <main className="mx-auto max-w-[1440px] space-y-10 px-4 pb-16 pt-6 sm:px-6">
+        {priceError && (
+          <div className="rounded-xl border border-red-900/50 bg-red-950/30 p-3.5 text-sm text-red-400">
+            ⚠️ {priceError}
+          </div>
+        )}
+
+        <FeaturedCarousel />
+
+        <FeaturedTokens tokens={featured} onSelectToken={openToken} />
+        <TrendingRow tokens={trending} onSelectToken={openToken} />
+
+        {/* Token-Tabelle in voller Breite */}
+        <TokenTable tokens={tokens} loading={loadingMarket} onSelectToken={openToken} />
+
+        {/* cDOG Wallet Radar */}
+        <section aria-label="cDOG Wallet Radar" className="space-y-4">
+          <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            <Dog className="h-4 w-4 text-blue-400" />
+            cDOG Wallet Radar
+          </h2>
+          <WalletRadar wallets={wallets} onWalletAdded={fetchWallets} />
+        </section>
+      </main>
+
+      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-600">
+        CARDYX — Cardano Digital Asset Intelligence · cDOG, The On-Chain Scout
+      </footer>
+
+      {/* Token-Detailfenster: aktuelle Marktdaten + Live-Chart */}
+      {modalOpen && selectedToken && (
+        <TokenDetailModal
+          token={selectedToken}
+          adaPriceUsd={adaPriceUsd}
+          onClose={() => setModalOpen(false)}
+          onTrade={openTrade}
+        />
+      )}
+
+      {/* Schwebendes Trade Terminal (rechts oben) */}
+      {tradeOpen && (
+        <div className="fixed right-4 top-24 z-[90] w-[340px] sm:right-6">
+          <TradePanel
+            tokens={tokens}
+            adaPriceUsd={adaPriceUsd}
+            selectedToken={tradeToken}
+            onSelectToken={setTradeToken}
+            onClose={() => setTradeOpen(false)}
           />
         </div>
-      </nav>
+      )}
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Digital Asset Intelligence</h1>
-          <p className="text-slate-400 mt-2">Willkommen bei CARDYX. Verfolge Token-Metriken, durchleuchte Portfolios und lerne das Cardano-Ökosystem kennen.</p>
-        </div>
-
-        {/* Dashboard Grid Card-Skelette */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: ADA Kurs & Markt */}
-          <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-400">Cardano Market Status</span>
-              <LineChart className="w-5 h-5 text-indigo-500" />
-            </div>
-            <div>
-              <span className="text-2xl font-bold tracking-tight">$0.38</span>
-              <span className="text-xs font-semibold text-emerald-400 ml-2">+4.2%</span>
-            </div>
-            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div className="w-2/3 h-full bg-indigo-600 rounded-full"></div>
-            </div>
-          </div>
-
-          {/* Card 2: Trending Assets */}
-          <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-400">Trending cDOG Scout</span>
-              <TrendingUp className="w-5 h-5 text-amber-500" />
-            </div>
-            <div className="space-y-2 text-sm text-slate-300">
-              <div className="flex justify-between"><span>1. $SNEK</span> <span className="text-emerald-400">+12.4%</span></div>
-              <div className="flex justify-between"><span>2. $HOSKY</span> <span className="text-slate-400">0.0%</span></div>
-            </div>
-          </div>
-
-          {/* Card 3: Wallet Tracker */}
-          <div className="p-6 bg-slate-900 rounded-xl border border-slate-800 hover:border-slate-700 transition space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-400">Portfolio Verteilung</span>
-              <Wallet className="w-5 h-5 text-cyan-500" />
-            </div>
-            <p className="text-xs text-slate-400">Verbinde eine Cardano-Wallet-Adresse, um Token-Guthaben und NFT-Zuweisungen live zu analysieren.</p>
-            <button className="w-full py-2 bg-slate-800 hover:bg-slate-700 transition text-sm font-medium rounded-lg border border-slate-700">
-              Wallet analysieren
-            </button>
-          </div>
-        </div>
-
-        {/* ADA-Kurs Sektion Placeholder */}
-        <div className="p-6 bg-gradient-to-br from-indigo-900/20 to-slate-900 rounded-xl border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2 text-indigo-400 text-sm font-medium">
-              <BookOpen className="w-4 h-4" />
-              <span>CARDYX Academy</span>
-            </div>
-            <h3 className="text-lg font-bold text-white">Bereit für den ADA-Kurs (Phase 1)?</h3>
-            <p className="text-sm text-slate-400 max-w-xl">Erlerne die fundamentalen Bausteine der Cardano-Blockchain direkt in unserem interaktiven Dashboard-Modul.</p>
-          </div>
-          <button className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 transition text-sm font-medium rounded-lg text-white whitespace-nowrap">
-            Kurs starten
-          </button>
-        </div>
-      </main>
+      {/* Trade-Toggle (immer erreichbar, unten rechts) */}
+      {!tradeOpen && (
+        <button
+          type="button"
+          onClick={() => setTradeOpen(true)}
+          className="fixed bottom-6 right-6 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-blue-600/40 transition-all hover:from-blue-500 hover:to-cyan-400 active:scale-95"
+        >
+          <Zap className="h-4 w-4" />
+          TRADE Terminal
+        </button>
+      )}
     </div>
+    </WalletProvider>
   );
 }
