@@ -188,3 +188,14 @@ export async function getTopTokens(): Promise<MarketData> {
     throw error;
   }
 }
+
+/**
+ * Liefert einen einzelnen Token aus dem gecachten Top-50-Dataset.
+ * Die Route bleibt damit konsistent zur Übersicht und erzeugt keinen
+ * zusätzlichen CoinGecko-Abruf für jeden Seitenaufruf.
+ */
+export async function getTokenById(id: string): Promise<{ token: MarketToken; adaPriceUsd: number } | null> {
+  const market = await getTopTokens();
+  const token = market.tokens.find((entry) => entry.id === id);
+  return token ? { token, adaPriceUsd: market.adaPriceUsd } : null;
+}

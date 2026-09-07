@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Wallet, Plus, ShieldCheck } from 'lucide-react';
 import { API_URL } from '../lib/api';
 
@@ -145,8 +146,14 @@ export default function WalletRadar({ wallets, onWalletAdded }: WalletRadarProps
                     <td className="py-3 px-3 font-semibold text-cyan-400 truncate max-w-[120px]">
                       {w.label}
                     </td>
-                    <td className="py-3 px-3 text-xs text-slate-500 font-mono truncate max-w-[200px]" title={w.address}>
-                      {w.address}
+                    <td className="py-3 px-3 text-xs font-mono max-w-[200px]">
+                      <Link
+                        href={`/wallet/${encodeURIComponent(w.address)}`}
+                        title={w.address}
+                        className="block truncate text-slate-500 transition-colors hover:text-cyan-400"
+                      >
+                        {w.address}
+                      </Link>
                     </td>
                     <td className="py-3 px-3 text-xs text-slate-400 text-right">
                       {new Date(w.createdAt).toLocaleDateString('de-DE')}

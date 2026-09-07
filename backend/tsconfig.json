@@ -44,5 +44,9 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-  }
+  },
+  "exclude": [
+    "prisma/contract.mts",
+    "prisma/db.ts"
+  ]
 }

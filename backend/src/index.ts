@@ -1,7 +1,10 @@
 import express from 'express';
 import pg from 'pg';
+import 'dotenv/config';
 import { updateAndGetTokens } from './token.service';
-import { getTopTokens, getTokenChart } from './market.service';
+import { getTokenById, getTopTokens, getTokenChart } from './market.service';
+import { getWalletAnalysis } from './wallet.service';
+import { addSwapSignatures, buildSwap, dexhunterConfigured, estimateSwap, searchDexhunterTokens } from './dexhunter.service';
 import cors from 'cors';
 
 const { Pool } = pg;
@@ -14,10 +17,13 @@ const DATABASE_URL =
   process.env.DATABASE_URL ??
   'postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev?schema=public';
 
+const databaseHost = new URL(DATABASE_URL).hostname;
+const useDatabaseSsl = !['localhost', '127.0.0.1', '::1'].includes(databaseHost);
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   // Managed-Postgres-Anbieter (Railway, Neon, Supabase) verlangen SSL
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
+  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined,
 });
 
 app.use(express.json());
@@ -151,6 +157,20 @@ app.get('/api/market/top50', async (req, res) => {
   }
 });
 
+// Einzelner Token für die dedizierte CARDYX-Analyse-Seite
+app.get('/api/market/token/:id', async (req, res) => {
+  try {
+    const detail = await getTokenById(req.params.id);
+    if (!detail) {
+      return res.status(404).json({ success: false, error: 'Token nicht in den CARDYX Top 50 gefunden' });
+    }
+    res.json({ success: true, data: detail });
+  } catch (error: any) {
+    console.error(`Fehler in der Token-Route (${req.params.id}):`, error.message);
+    res.status(502).json({ success: false, error: 'Token-Daten aktuell nicht verfügbar' });
+  }
+});
+
 // OHLC-Chartdaten eines einzelnen Tokens (7 oder 30 Tage)
 app.get('/api/market/chart/:id', async (req, res) => {
   const { id } = req.params;
@@ -166,8 +186,66 @@ app.get('/api/market/chart/:id', async (req, res) => {
 });
 
 // ===================================================================
+// DEXHUNTER PARTNER API: Quote -> Build -> Wallet signiert -> Witness
+// ===================================================================
+
+app.get('/api/trade/status', (req, res) => {
+  res.json({ success: true, data: { configured: dexhunterConfigured() } });
+});
+
+app.get('/api/trade/tokens', async (req, res) => {
+  try {
+    const query = typeof req.query.query === 'string' ? req.query.query : '';
+    const tokens = await searchDexhunterTokens(query);
+    res.json({ success: true, data: tokens });
+  } catch (error: any) {
+    res.status(502).json({ success: false, error: error.message ?? 'Tokenkatalog nicht verfügbar' });
+  }
+});
+
+app.post('/api/trade/estimate', async (req, res) => {
+  try {
+    const quote = await estimateSwap(req.body);
+    res.json({ success: true, data: quote });
+  } catch (error: any) {
+    res.status(502).json({ success: false, error: error.message ?? 'Quote nicht verfügbar' });
+  }
+});
+
+app.post('/api/trade/build', async (req, res) => {
+  try {
+    const { buyer_address, ...swap } = req.body ?? {};
+    const built = await buildSwap(String(buyer_address ?? ''), swap);
+    res.json({ success: true, data: built });
+  } catch (error: any) {
+    res.status(502).json({ success: false, error: error.message ?? 'Transaktion konnte nicht erstellt werden' });
+  }
+});
+
+app.post('/api/trade/sign', async (req, res) => {
+  try {
+    const signed = await addSwapSignatures(req.body?.txCbor, req.body?.signatures);
+    res.json({ success: true, data: signed });
+  } catch (error: any) {
+    res.status(502).json({ success: false, error: error.message ?? 'Signatur konnte nicht verarbeitet werden' });
+  }
+});
+
+// ===================================================================
 // WALLET API ENDPUNKTE (NEU FÜR VARIANTE B)
 // ===================================================================
+
+// Öffentliche, read-only Wallet-Analyse (Koios; 60 Sekunden gecached)
+app.get('/api/wallets/:address/analysis', async (req, res) => {
+  try {
+    const analysis = await getWalletAnalysis(req.params.address);
+    res.json({ success: true, data: analysis });
+  } catch (error: any) {
+    const isValidationError = error.message?.startsWith('Bitte eine gültige');
+    console.error(`Fehler in der Wallet-Analyse (${req.params.address}):`, error.message);
+    res.status(isValidationError ? 400 : 502).json({ success: false, error: error.message ?? 'Wallet-Daten aktuell nicht verfügbar' });
+  }
+});
 
 // 1. Alle gespeicherten Wallets abrufen
 app.get('/api/wallets', async (req, res) => {

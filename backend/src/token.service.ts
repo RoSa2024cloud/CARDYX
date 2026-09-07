@@ -12,9 +12,12 @@ const CONNECTION_STRING =
   process.env.DATABASE_URL ??
   'postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev';
 
+const databaseHost = new URL(CONNECTION_STRING).hostname;
+const useDatabaseSsl = !['localhost', '127.0.0.1', '::1'].includes(databaseHost);
+
 const db = new Client({
   connectionString: CONNECTION_STRING,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined,
+  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined,
 });
 db.connect().catch(err => console.error("Datenbank-Verbindungsfehler:", err));
 

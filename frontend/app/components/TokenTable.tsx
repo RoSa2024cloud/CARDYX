@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpDown } from 'lucide-react';
 import TokenLogo from './TokenLogo';
+import { useLanguage } from './LanguageProvider';
 import {
   MarketToken,
   formatAdaPrice,
@@ -37,6 +38,7 @@ interface TokenTableProps {
 
 /** Zentrale Token-Tabelle: Top 50 Cardano-Ökosystem-Token (Live-Daten). */
 export default function TokenTable({ tokens, loading, onSelectToken }: TokenTableProps) {
+  const { language } = useLanguage();
   const [sortKey, setSortKey] = useState<SortKey>('marketCapAda');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [query, setQuery] = useState('');
@@ -66,16 +68,16 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
   };
 
   return (
-    <section aria-label="Top Cardano Tokens">
+    <section aria-label={language === 'de' ? 'Top Cardano Token' : 'Top Cardano Tokens'}>
       {/* Filter-Leiste */}
       <div className="mb-3 flex flex-wrap items-center gap-2.5">
         <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300">
-          <span className="text-slate-500">Filter:</span>
+          <span className="text-slate-500">{language === 'de' ? 'Filter:' : 'Filter:'}</span>
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ticker oder Name…"
+            placeholder={language === 'de' ? 'Ticker oder Name…' : 'Ticker or name…'}
             className="w-36 bg-transparent font-semibold text-slate-100 placeholder:text-slate-600 focus:outline-none"
           />
         </label>
@@ -84,7 +86,7 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
           </span>
-          {visibleTokens.length} tokens · Live via CoinGecko
+          {visibleTokens.length} {language === 'de' ? 'Token · Live via CoinGecko' : 'tokens · Live via CoinGecko'}
         </span>
       </div>
 

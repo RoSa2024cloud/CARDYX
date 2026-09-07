@@ -15,6 +15,29 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+.cardyx-dashboard {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(115deg, rgba(5, 7, 13, 0.98) 0%, rgba(4, 17, 21, 0.97) 52%, rgba(5, 12, 16, 0.98) 100%),
+    #05070d;
+}
+
+.cardyx-dashboard::before {
+  position: fixed;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: min(40vw, 520px);
+  height: min(40vw, 520px);
+  content: '';
+  background: url('/cardyx-logo.jpeg') center / cover no-repeat;
+  opacity: 0.055;
+  filter: saturate(0.8);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 /* Versteckte Scrollbar für horizontale Reihen (Carousel, Featured, Trending) */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

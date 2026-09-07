@@ -1,42 +1,31 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Dog, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import Navbar from './components/Navbar';
 import TickerBar from './components/TickerBar';
 import FeaturedCarousel from './components/FeaturedCarousel';
 import FeaturedTokens from './components/FeaturedTokens';
 import TrendingRow from './components/TrendingRow';
 import TokenTable from './components/TokenTable';
-import WalletRadar from './components/WalletRadar';
-import TokenDetailModal from './components/TokenDetailModal';
 import TradePanel from './components/TradePanel';
 import { WalletProvider } from './components/WalletProvider';
+import { useLanguage } from './components/LanguageProvider';
 import { API_URL } from './lib/api';
 import { MarketToken } from './lib/tokens';
 
 export default function Dashboard() {
+  const { language } = useLanguage();
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [adaPriceUsd, setAdaPriceUsd] = useState<number | null>(null);
   const [loadingMarket, setLoadingMarket] = useState(true);
   const [priceError, setPriceError] = useState<string | null>(null);
-  const [wallets, setWallets] = useState<any[]>([]);
-  const [selectedToken, setSelectedToken] = useState<MarketToken | null>(null);
   const [tradeToken, setTradeToken] = useState<MarketToken | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [tradeOpen, setTradeOpen] = useState(false);
 
-  // Klick auf einen Token öffnet das Analyse-Fenster UND stellt das Trade-Panel ein
+  // Jeder Token führt auf seine eigene Analyse-Seite.
   const openToken = (token: MarketToken) => {
-    setSelectedToken(token);
-    setTradeToken(token);
-    setModalOpen(true);
-  };
-
-  // Kauf-Button im Analyse-Fenster öffnet das schwebende Trade-Panel
-  const openTrade = () => {
-    setModalOpen(false);
-    setTradeOpen(true);
+    window.location.assign(`/token/${encodeURIComponent(token.id)}`);
   };
 
   // Top-50-Marktdaten vom Backend abrufen (silent = Hintergrund-Update)
@@ -56,30 +45,19 @@ export default function Dashboard() {
       })
       .catch(() => {
         if (!silent) {
-          setPriceError('Verbindung zum Backend fehlgeschlagen – Live-Daten aktuell nicht verfügbar.');
+          setPriceError(language === 'de' ? 'Verbindung zum Backend fehlgeschlagen – Live-Daten aktuell nicht verfügbar.' : 'Backend connection failed – live data is currently unavailable.');
           setLoadingMarket(false);
         }
       });
   };
 
-  // Registrierte Wallets abrufen
-  const fetchWallets = () => {
-    fetch(`${API_URL}/api/wallets`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success) setWallets(json.data);
-      })
-      .catch((err) => console.error('Fehler:', err));
-  };
-
   useEffect(() => {
     fetchMarket();
-    fetchWallets();
 
     // Automatischer Taktgeber für die Marktdaten (alle 60 Sekunden)
     const marketInterval = setInterval(() => fetchMarket(true), 60_000);
     return () => clearInterval(marketInterval);
-  }, []);
+  }, [language]);
 
   // Abgeleitete Reihen aus den Live-Daten
   // Featured: alle Top 50 in Market-Cap-Reihenfolge (als Laufschrift)
@@ -95,7 +73,7 @@ export default function Dashboard() {
 
   return (
     <WalletProvider>
-    <div className="min-h-screen bg-[#05070d] text-slate-200 antialiased">
+    <div className="cardyx-dashboard min-h-screen text-slate-200 antialiased">
       <Navbar />
       <TickerBar adaPriceUsd={adaPriceUsd} />
 
@@ -114,29 +92,11 @@ export default function Dashboard() {
         {/* Token-Tabelle in voller Breite */}
         <TokenTable tokens={tokens} loading={loadingMarket} onSelectToken={openToken} />
 
-        {/* cDOG Wallet Radar */}
-        <section aria-label="cDOG Wallet Radar" className="space-y-4">
-          <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
-            <Dog className="h-4 w-4 text-blue-400" />
-            cDOG Wallet Radar
-          </h2>
-          <WalletRadar wallets={wallets} onWalletAdded={fetchWallets} />
-        </section>
       </main>
 
       <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-600">
-        CARDYX — Cardano Digital Asset Intelligence · cDOG, The On-Chain Scout
+        CARDYX — {language === 'de' ? 'Cardano Digital Asset Intelligence' : 'Cardano Digital Asset Intelligence'} · cDOG, The On-Chain Scout
       </footer>
-
-      {/* Token-Detailfenster: aktuelle Marktdaten + Live-Chart */}
-      {modalOpen && selectedToken && (
-        <TokenDetailModal
-          token={selectedToken}
-          adaPriceUsd={adaPriceUsd}
-          onClose={() => setModalOpen(false)}
-          onTrade={openTrade}
-        />
-      )}
 
       {/* Schwebendes Trade Terminal (rechts oben) */}
       {tradeOpen && (
@@ -156,7 +116,7 @@ export default function Dashboard() {
         <button
           type="button"
           onClick={() => setTradeOpen(true)}
-          className="fixed bottom-6 right-6 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 text-sm font-bold text-white shadow-2xl shadow-blue-600/40 transition-all hover:from-blue-500 hover:to-cyan-400 active:scale-95"
+          className="fixed bottom-6 right-6 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-2xl shadow-emerald-500/25 transition-all hover:from-emerald-400 hover:to-cyan-300 active:scale-95"
         >
           <Zap className="h-4 w-4" />
           TRADE Terminal
