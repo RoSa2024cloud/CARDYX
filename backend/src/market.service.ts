@@ -1,6 +1,6 @@
 // backend/src/market.service.ts
 //
-// Marktdaten-Service: Lädt die Top 50 Token des Cardano-Ökosystems
+// Marktdaten-Service: Lädt die Top 200 Token des Cardano-Ökosystems
 // (Preise, Market Cap, Volumen, 24h/7d-Änderungen, Logos) von CoinGecko
 // und rechnet die USD-Werte auf Basis des Live-ADA-Kurses in ADA um.
 //
@@ -9,7 +9,7 @@
 const COINGECKO_URL =
   'https://api.coingecko.com/api/v3/coins/markets' +
   '?vs_currency=usd&category=cardano-ecosystem&order=market_cap_desc' +
-  '&per_page=50&page=1&sparkline=false&price_change_percentage=24h%2C7d' +
+  '&per_page=200&page=1&sparkline=false&price_change_percentage=24h%2C7d' +
   '&locale=en&platform=cardano';
 
 const COINGECKO_ADA_URL =
@@ -118,7 +118,7 @@ async function fetchJson(url: string): Promise<any> {
   return response.json();
 }
 
-/** Lädt die Top-50-Marktdaten (gecached) und rechnet sie in ADA um. */
+/** Lädt die Top-200-Marktdaten (gecached) und rechnet sie in ADA um. */
 export async function getTopTokens(): Promise<MarketData> {
   // Frischen Cache direkt zurückgeben
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
@@ -190,7 +190,7 @@ export async function getTopTokens(): Promise<MarketData> {
 }
 
 /**
- * Liefert einen einzelnen Token aus dem gecachten Top-50-Dataset.
+ * Liefert einen einzelnen Token aus dem gecachten Top-200-Dataset.
  * Die Route bleibt damit konsistent zur Übersicht und erzeugt keinen
  * zusätzlichen CoinGecko-Abruf für jeden Seitenaufruf.
  */

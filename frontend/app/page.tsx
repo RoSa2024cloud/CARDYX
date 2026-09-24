@@ -28,9 +28,9 @@ export default function Dashboard() {
     window.location.assign(`/token/${encodeURIComponent(token.id)}`);
   };
 
-  // Top-50-Marktdaten vom Backend abrufen (silent = Hintergrund-Update)
+  // Top-200-Marktdaten vom Backend abrufen (silent = Hintergrund-Update)
   const fetchMarket = (silent = false) => {
-    fetch(`${API_URL}/api/market/top50`)
+    fetch(`${API_URL}/api/market/top200`)
       .then((res) => {
         if (!res.ok) throw new Error('Fehler beim Abruf');
         return res.json();
@@ -60,8 +60,8 @@ export default function Dashboard() {
   }, [language]);
 
   // Abgeleitete Reihen aus den Live-Daten
-  // Featured: alle Top 50 in Market-Cap-Reihenfolge (als Laufschrift)
-  const featured = tokens;
+  // Featured bleibt bewusst auf die 50 groessten Werte begrenzt.
+  const featured = tokens.slice(0, 50);
   const trending = useMemo(
     () =>
       [...tokens]

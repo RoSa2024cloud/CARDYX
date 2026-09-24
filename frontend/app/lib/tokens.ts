@@ -33,6 +33,8 @@ export interface MarketToken {
   atlDate: string | null;
   high24hUsd: number;
   low24hUsd: number;
+  category?: string;
+  catalogVerified?: boolean;
 }
 
 export interface ChartCandle {

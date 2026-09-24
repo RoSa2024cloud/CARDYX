@@ -292,10 +292,50 @@ app.get('/api/tokens', async (req, res) => {
 // MARKET API: Top 50 Cardano-Ökosystem-Token (Live via CoinGecko)
 // ===================================================================
 
-app.get('/api/market/top50', async (req, res) => {
+async function enrichMarketWithCatalog(market: Awaited<ReturnType<typeof getTopTokens>>) {
   try {
-    const market = await getTopTokens();
+    const catalog = await pool.query<{
+      market_id: string;
+      category: string;
+      is_verified: boolean;
+    }>('SELECT market_id, category, is_verified FROM cardyx.asset_catalog_public');
+    const catalogByMarketId = new Map(catalog.rows.map((entry) => [entry.market_id, entry]));
+
+    return {
+      ...market,
+      tokens: market.tokens.map((token) => {
+        const catalogEntry = catalogByMarketId.get(token.id);
+        return {
+          ...token,
+          category: catalogEntry?.category ?? 'other',
+          catalogVerified: catalogEntry?.is_verified ?? false,
+        };
+      }),
+    };
+  } catch (error: any) {
+    console.warn('CARDYX-Asset-Katalog nicht verfügbar, liefere Marktfeed ohne Kategorisierung:', error.message);
+    return {
+      ...market,
+      tokens: market.tokens.map((token) => ({ ...token, category: 'other', catalogVerified: false })),
+    };
+  }
+}
+
+app.get('/api/market/top200', async (_req, res) => {
+  try {
+    const market = await enrichMarketWithCatalog(await getTopTokens());
     res.json({ success: true, data: market });
+  } catch (error: any) {
+    console.error('Fehler in der Market-Route:', error.message);
+    res.status(502).json({ success: false, error: 'Marktdaten aktuell nicht verfügbar' });
+  }
+});
+
+// Kompatibilitaet fuer bestehende Clients, die die fruehere Top-50-Route nutzen.
+app.get('/api/market/top50', async (_req, res) => {
+  try {
+    const market = await enrichMarketWithCatalog(await getTopTokens());
+    res.json({ success: true, data: { ...market, total: Math.min(market.total, 50), tokens: market.tokens.slice(0, 50) } });
   } catch (error: any) {
     console.error('Fehler in der Market-Route:', error.message);
     res.status(502).json({ success: false, error: 'Marktdaten aktuell nicht verfügbar' });
