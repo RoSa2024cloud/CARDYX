@@ -25,7 +25,7 @@ const useDatabaseSsl = !['localhost', '127.0.0.1', '::1', 'postgres'].includes(d
 const pool = new Pool({
   connectionString: DATABASE_URL,
   // Managed-Postgres-Anbieter (Railway, Neon, Supabase) verlangen SSL
-  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : undefined,
+  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : false,
 });
 
 app.use(express.json());
