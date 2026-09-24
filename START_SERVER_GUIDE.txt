@@ -150,6 +150,34 @@ Aktuellen freigegebenen Chain-Status pruefen:
 Die lokale Verbindungsdatei /srv/cardyx/secrets/cardyx-api.env ist geheim und
 darf niemals in Git, Logs oder Chat-Nachrichten kopiert werden.
 
+Die interne API ist nur am Server selbst unter 127.0.0.1:4000 erreichbar.
+Aktuellen API-Containerstatus pruefen:
+
+  docker inspect -f 'Status={{.State.Status}} Restarts={{.RestartCount}}' cardyx-api
+
+Chain-Status ueber die API pruefen:
+
+  curl --fail --silent http://127.0.0.1:4000/api/chain/status
+
+Verfuegbare Explorer-Endpunkte:
+
+  GET /api/chain/transactions/:hash
+      64-stelliger hexadezimaler Transaktionshash
+  GET /api/chain/assets/:fingerprint
+      Cardano Asset-Fingerprint (asset1...)
+  GET /api/chain/addresses/:address
+      Cardano Mainnet-Adresse (addr1...)
+
+Die Endpunkte liefern ausschliesslich verifizierte On-Chain-Daten aus den
+freigegebenen CARDYX-Views. Fiat-Preise, Logos und lesbare Token-Metadaten
+sind nicht Teil dieser Datenschicht.
+
+API neu bauen oder nach einem Update starten:
+
+  cd /srv/cardyx/app
+  git pull --ff-only
+  docker compose --env-file /srv/cardyx/secrets/cardyx-api.env -f backend/docker-compose.production.yml up -d --build
+
 -----------------------------------------------------------------------
 7. POSTGRESQL UND REDIS
 -----------------------------------------------------------------------
