@@ -10,6 +10,8 @@ import cors from 'cors';
 const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 4000;
+const initializeDatabase = process.env.INITIALIZE_DATABASE !== 'false';
+const runBackgroundTokenUpdate = process.env.RUN_BACKGROUND_TOKEN_UPDATE !== 'false';
 
 // Datenbankverbindung: Online via DATABASE_URL (z.B. Railway/Neon),
 // lokal mit Docker-Compose-Fallback. Secrets niemals im Code!
@@ -82,7 +84,9 @@ async function initDatabase() {
     console.error('❌ Fehler bei der Tabellen-Initialisierung:', err.message);
   }
 }
-initDatabase();
+if (initializeDatabase) {
+  initDatabase();
+}
 
 // System-Status Route
 app.get('/', (req, res) => {
@@ -323,10 +327,10 @@ async function runTokenUpdate() {
 }
 
 // Sofort beim Starten des Backends einmal ausführen!
-runTokenUpdate();
-
-// Danach alle 60 Sekunden im Hintergrund wiederholen
-setInterval(runTokenUpdate, UPDATE_INTERVAL);
+if (runBackgroundTokenUpdate) {
+  runTokenUpdate();
+  setInterval(runTokenUpdate, UPDATE_INTERVAL);
+}
 
 
 app.listen(PORT, () => {

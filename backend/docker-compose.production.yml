@@ -1,0 +1,26 @@
+name: cardyx-api
+
+services:
+  api:
+    build: .
+    container_name: cardyx-api
+    restart: unless-stopped
+    env_file:
+      - /srv/cardyx/secrets/cardyx-api.env
+    environment:
+      DATABASE_URL: ${CARDYX_DATABASE_URL}
+      INITIALIZE_DATABASE: "false"
+      RUN_BACKGROUND_TOKEN_UPDATE: "false"
+      PORT: "4000"
+    ports:
+      - "127.0.0.1:4000:4000"
+    networks:
+      - database
+      - egress
+
+networks:
+  database:
+    external: true
+    name: cardyx-internal
+  egress:
+    name: cardyx-api-egress
