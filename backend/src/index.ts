@@ -115,6 +115,88 @@ app.get('/api/chain/status', async (_req, res) => {
   }
 });
 
+app.get('/api/chain/transactions/:hash', async (req, res) => {
+  const hash = req.params.hash.toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hash)) {
+    return res.status(400).json({ success: false, error: 'Der Transaktionshash muss 64 hexadezimale Zeichen enthalten.' });
+  }
+
+  try {
+    const result = await pool.query('SELECT * FROM cardyx.transaction_summary WHERE tx_hash = $1', [hash]);
+    const transaction = result.rows[0];
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaktion nicht gefunden.' });
+    }
+    res.json({ success: true, data: transaction });
+  } catch (error: any) {
+    console.error('Fehler bei der CARDYX-Transaktionssuche:', error.message);
+    res.status(503).json({ success: false, error: 'Die CARDYX-Chain-Daten sind aktuell nicht verfügbar.' });
+  }
+});
+
+app.get('/api/chain/assets/:fingerprint', async (req, res) => {
+  const fingerprint = req.params.fingerprint.toLowerCase();
+  if (!/^asset1[0-9a-z]{20,}$/.test(fingerprint)) {
+    return res.status(400).json({ success: false, error: 'Der Asset-Fingerprint ist ungültig.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT fingerprint, policy_id, asset_name,
+              count(*) AS utxo_count,
+              count(DISTINCT address) AS holder_count,
+              coalesce(sum(quantity), 0) AS circulating_quantity,
+              max(block_time) AS latest_activity
+       FROM cardyx.asset_utxo
+       WHERE fingerprint = $1
+       GROUP BY fingerprint, policy_id, asset_name`,
+      [fingerprint]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ success: false, error: 'Asset nicht gefunden oder nicht mehr in einer UTxO vorhanden.' });
+    }
+    res.json({ success: true, data: asset });
+  } catch (error: any) {
+    console.error('Fehler beim CARDYX-Asset-Lookup:', error.message);
+    res.status(503).json({ success: false, error: 'Die CARDYX-Chain-Daten sind aktuell nicht verfügbar.' });
+  }
+});
+
+app.get('/api/chain/addresses/:address', async (req, res) => {
+  const address = req.params.address;
+  if (!/^addr(_test)?1[0-9a-z]{20,}$/.test(address)) {
+    return res.status(400).json({ success: false, error: 'Die Cardano-Adresse ist ungültig.' });
+  }
+
+  try {
+    const [summaryResult, assetResult] = await Promise.all([
+      pool.query(
+        `SELECT address, count(*) AS utxo_count, coalesce(sum(lovelace), 0) AS lovelace_balance,
+                max(block_time) AS latest_activity
+         FROM cardyx.address_utxo
+         WHERE address = $1
+         GROUP BY address`,
+        [address]
+      ),
+      pool.query(
+        `SELECT count(DISTINCT fingerprint) AS asset_count
+         FROM cardyx.asset_utxo
+         WHERE address = $1`,
+        [address]
+      ),
+    ]);
+    const summary = summaryResult.rows[0];
+    if (!summary) {
+      return res.status(404).json({ success: false, error: 'Adresse hat keine aktuell unverbauten UTxOs.' });
+    }
+    res.json({ success: true, data: { ...summary, asset_count: assetResult.rows[0].asset_count } });
+  } catch (error: any) {
+    console.error('Fehler bei der CARDYX-Adresszusammenfassung:', error.message);
+    res.status(503).json({ success: false, error: 'Die CARDYX-Chain-Daten sind aktuell nicht verfügbar.' });
+  }
+});
+
 // TEST-ROUTE: Schreibt den Test-Token live in deine Docker-Datenbank
 app.get('/api/v1/test-seed', async (req, res) => {
   try {
