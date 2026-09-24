@@ -9,7 +9,7 @@
 const COINGECKO_URL =
   'https://api.coingecko.com/api/v3/coins/markets' +
   '?vs_currency=usd&category=cardano-ecosystem&order=market_cap_desc' +
-  '&per_page=200&page=1&sparkline=false&price_change_percentage=24h%2C7d' +
+  '&per_page=200&page=1&sparkline=true&price_change_percentage=24h%2C7d' +
   '&locale=en&platform=cardano';
 
 const COINGECKO_ADA_URL =
@@ -45,6 +45,7 @@ export interface MarketToken {
   atlDate: string | null;
   high24hUsd: number;
   low24hUsd: number;
+  sparkline7d: number[];
 }
 
 export interface MarketData {
@@ -167,6 +168,9 @@ export async function getTopTokens(): Promise<MarketData> {
         atlDate: coin.atl_date ?? null,
         high24hUsd: toNumber(coin.high_24h),
         low24hUsd: toNumber(coin.low_24h),
+        sparkline7d: Array.isArray(coin.sparkline_in_7d?.price)
+          ? coin.sparkline_in_7d.price.map(toNumber).filter((value: number) => value > 0)
+          : [],
       };
     });
 

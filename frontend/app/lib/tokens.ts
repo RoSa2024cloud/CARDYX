@@ -33,6 +33,7 @@ export interface MarketToken {
   atlDate: string | null;
   high24hUsd: number;
   low24hUsd: number;
+  sparkline7d: number[];
   category?: string;
   catalogVerified?: boolean;
 }

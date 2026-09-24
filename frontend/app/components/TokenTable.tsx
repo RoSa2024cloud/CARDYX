@@ -24,7 +24,7 @@ const COLUMNS: Column[] = [
   { label: 'Token' },
   { label: 'Price', key: 'priceAda', alignRight: true },
   { label: '24h', key: 'change24h', alignRight: true },
-  { label: '7d', key: 'change7d', alignRight: true },
+  { label: '7d / chart', key: 'change7d', alignRight: true },
   { label: 'Volume 24h', key: 'volume24hAda', alignRight: true },
   { label: 'Market Cap', key: 'marketCapAda', alignRight: true },
   { label: 'FDV', key: 'fdvAda', alignRight: true },
@@ -219,7 +219,18 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
 
                     {/* Veränderungen */}
                     <ChangeCell value={token.change24h} />
-                    <ChangeCell value={token.change7d} />
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex min-w-[118px] items-center justify-end gap-2">
+                        <Sparkline values={token.sparkline7d} positive={token.change7d >= 0} />
+                        <span
+                          className={`text-[13px] font-semibold ${
+                            token.change7d > 0 ? 'text-green-400' : token.change7d < 0 ? 'text-red-400' : 'text-slate-500'
+                          }`}
+                        >
+                          {formatChange(token.change7d)}
+                        </span>
+                      </div>
+                    </td>
 
                     {/* Volumen */}
                     <td className="px-4 py-3.5 text-right text-slate-300">
@@ -293,5 +304,35 @@ function MiniBar({ value, max }: { value: number; max: number }) {
     <div className="ml-auto mt-1 h-0.5 w-16 overflow-hidden rounded-full bg-white/5">
       <div className="h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} />
     </div>
+  );
+}
+
+function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
+  if (values.length < 2) {
+    return <div className="h-7 w-[76px] rounded-md bg-white/[0.035]" aria-label="7d chart unavailable" />;
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * 76;
+      const y = 26 - ((value - min) / span) * 22;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+
+  return (
+    <svg viewBox="0 0 76 28" className="h-7 w-[76px]" role="img" aria-label="7-day price chart">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={positive ? '#4ade80' : '#f87171'}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
