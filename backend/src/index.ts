@@ -234,6 +234,28 @@ app.get('/api/catalog/assets', async (req, res) => {
   }
 });
 
+app.get('/api/market/onchain', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM cardyx.onchain_market
+       ORDER BY holder_count DESC, circulating_quantity DESC, display_name`
+    );
+    res.json({
+      success: true,
+      data: {
+        source: 'cardyx-chain',
+        pricing: 'not-indexed',
+        updatedAt: new Date().toISOString(),
+        total: result.rows.length,
+        tokens: result.rows,
+      },
+    });
+  } catch (error: any) {
+    console.error('Fehler beim Lesen des CARDYX-On-Chain-Marktfeeds:', error.message);
+    res.status(503).json({ success: false, error: 'Der CARDYX-On-Chain-Marktfeed ist aktuell nicht verfügbar.' });
+  }
+});
+
 // TEST-ROUTE: Schreibt den Test-Token live in deine Docker-Datenbank
 app.get('/api/v1/test-seed', async (req, res) => {
   try {

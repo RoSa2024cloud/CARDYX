@@ -167,10 +167,16 @@ Verfuegbare Explorer-Endpunkte:
       Cardano Asset-Fingerprint (asset1...)
   GET /api/chain/addresses/:address
       Cardano Mainnet-Adresse (addr1...)
+    GET /api/market/onchain
+      Katalog, Holder, UTxO und On-Chain-Mengen ohne CoinGecko
 
 Die Endpunkte liefern ausschliesslich verifizierte On-Chain-Daten aus den
 freigegebenen CARDYX-Views. Fiat-Preise, Logos und lesbare Token-Metadaten
 sind nicht Teil dieser Datenschicht.
+
+Der On-Chain-Marktfeed ist bereits unabhaengig von CoinGecko. Preise, ADA/USD-
+Umrechnung, DEX-Volumen und historische Charts werden erst nach Aufbau des
+eigenen DEX-Preisindex als CARDYX-Datenquelle verfuegbar.
 
 API neu bauen oder nach einem Update starten:
 
