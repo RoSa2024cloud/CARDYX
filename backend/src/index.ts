@@ -197,6 +197,43 @@ app.get('/api/chain/addresses/:address', async (req, res) => {
   }
 });
 
+const ASSET_CATEGORIES = ['layer-1', 'defi', 'stablecoin', 'infrastructure', 'gaming', 'ai', 'nft', 'meme', 'rwa', 'other'] as const;
+
+app.get('/api/catalog/categories', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT category, count(*) AS asset_count
+       FROM cardyx.asset_catalog_public
+       GROUP BY category
+       ORDER BY category`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    console.error('Fehler beim Lesen der CARDYX-Kategorien:', error.message);
+    res.status(503).json({ success: false, error: 'Der CARDYX-Asset-Katalog ist aktuell nicht verfügbar.' });
+  }
+});
+
+app.get('/api/catalog/assets', async (req, res) => {
+  const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+  if (category && !ASSET_CATEGORIES.includes(category as (typeof ASSET_CATEGORIES)[number])) {
+    return res.status(400).json({ success: false, error: 'Die angeforderte Kategorie ist ungültig.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT * FROM cardyx.asset_catalog_public
+       WHERE ($1::text IS NULL OR category = $1)
+       ORDER BY display_name`,
+      [category ?? null]
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    console.error('Fehler beim Lesen des CARDYX-Asset-Katalogs:', error.message);
+    res.status(503).json({ success: false, error: 'Der CARDYX-Asset-Katalog ist aktuell nicht verfügbar.' });
+  }
+});
+
 // TEST-ROUTE: Schreibt den Test-Token live in deine Docker-Datenbank
 app.get('/api/v1/test-seed', async (req, res) => {
   try {
