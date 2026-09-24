@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS cardyx.asset_balance_snapshot (
   PRIMARY KEY (policy_id, asset_name)
 );
 
-CREATE OR REPLACE VIEW cardyx.onchain_market AS
+DROP VIEW IF EXISTS cardyx.onchain_market;
+
+CREATE VIEW cardyx.onchain_market AS
 SELECT
   c.market_id,
   c.policy_id,
