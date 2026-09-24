@@ -138,8 +138,8 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
   const route = quote?.splits?.map((split) => split.dex).filter((dex, index, dexes) => dexes.indexOf(dex) === index).join(' + ');
 
   return (
-    <aside aria-label="TRADE Terminal" className="w-full overflow-hidden rounded-2xl border border-blue-500/35 bg-[#081323]/95 shadow-2xl shadow-blue-950/50 backdrop-blur-md ring-1 ring-cyan-400/15">
-      <div className="flex items-center justify-between border-b border-white/5 bg-gradient-to-r from-blue-600/20 to-cyan-500/5 px-4 py-3">
+    <aside aria-label="TRADE Terminal" className="cardyx-glass-strong w-full overflow-hidden rounded-2xl">
+      <div className="flex items-center justify-between border-b border-cyan-100/10 bg-gradient-to-r from-blue-600/30 via-cyan-400/10 to-violet-500/20 px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Zap className="h-4 w-4 text-cyan-300" />TRADE Terminal</h2>
         <div className="flex items-center gap-2"><span className="flex items-center gap-1.5 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-bold text-green-400">{copy.liveQuote}</span>{onClose && <button type="button" onClick={onClose} aria-label={copy.close} className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>}</div>
       </div>

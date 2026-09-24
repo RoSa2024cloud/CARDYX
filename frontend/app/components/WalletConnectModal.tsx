@@ -57,10 +57,10 @@ export default function WalletConnectModal({ onClose }: WalletConnectModalProps)
         className="fixed inset-0 bg-black/80 backdrop-blur-md"
       />
 
-      <div className="fixed inset-0 m-auto h-fit max-h-[calc(100vh-4rem)] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-2xl border border-white/15 bg-[#0c1220] shadow-2xl shadow-blue-900/30 ring-1 ring-blue-500/20">
+      <div className="cardyx-glass-strong fixed inset-0 m-auto h-fit max-h-[calc(100vh-4rem)] w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-2xl">
         {/* Kopf */}
-        <div className="flex items-center gap-3 border-b border-white/5 bg-white/[0.02] px-5 py-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg shadow-blue-600/30">
+        <div className="flex items-center gap-3 border-b border-cyan-200/10 bg-white/[0.03] px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 via-cyan-400 to-violet-500 shadow-lg shadow-blue-600/30">
             <Dog className="h-5 w-5 text-white" />
           </span>
           <div className="flex-1">
@@ -94,7 +94,7 @@ export default function WalletConnectModal({ onClose }: WalletConnectModalProps)
               type="button"
               onClick={() => handleConnect(wallet.key)}
               disabled={connectingKey !== null}
-              className="flex w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-left transition-colors hover:border-blue-500/40 hover:bg-blue-600/10 disabled:opacity-50"
+              className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-left transition-colors hover:border-cyan-300/45 hover:bg-cyan-300/10 disabled:opacity-50"
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- Wallet-Icons kommen als Data-URI von der Erweiterung */}
               <img src={wallet.icon} alt="" className="h-8 w-8 rounded-lg" />

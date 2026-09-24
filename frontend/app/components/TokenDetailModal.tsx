@@ -72,9 +72,9 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
       />
 
       {/* Fenster */}
-      <div className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0f1c] shadow-2xl shadow-black/60">
+      <div className="cardyx-glass-strong relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl">
         {/* Kopf */}
-        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/5 bg-[#0a0f1c]/95 px-6 py-4 backdrop-blur-sm">
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-cyan-100/10 bg-[#09122d]/80 px-6 py-4 backdrop-blur-xl">
           <TokenLogo src={token.image} ticker={token.ticker} size={40} />
           <div className="min-w-0 flex-1">
             <h2 className="flex items-center gap-2 truncate text-lg font-bold text-white">
@@ -192,7 +192,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
               <button
                 type="button"
                 onClick={onTrade}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-cyan-400 active:scale-[0.98]"
+                className="cardyx-accent-button flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-[0.98]"
               >
                 <Zap className="h-4 w-4" />
                 {token.ticker} handeln
@@ -202,7 +202,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
                 href={buildSwapUrl(token.policyId)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-cyan-400 active:scale-[0.98]"
+                className="cardyx-accent-button flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-all hover:brightness-110 active:scale-[0.98]"
               >
                 <Zap className="h-4 w-4" />
                 {token.ticker} handeln
@@ -211,7 +211,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
             <button
               type="button"
               title="Kursalarm festlegen (kommt mit Phase 5)"
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-blue-500/30 bg-blue-600/10 py-3 text-sm font-bold text-blue-300 transition-colors hover:bg-blue-600/20"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-300/10 py-3 text-sm font-bold text-cyan-100 transition-colors hover:bg-cyan-300/20"
             >
               <Bell className="h-4 w-4" />
               Kursalarm festlegen

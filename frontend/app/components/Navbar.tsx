@@ -31,12 +31,12 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-emerald-400/15 bg-[#05070d]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-cyan-300/20 bg-[#040611]/85 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-4 px-4 sm:px-6">
         {/* Logo */}
         <a href="#" aria-label="CARDYX Dashboard" className="flex shrink-0 items-center gap-2.5">
-          <span className="relative h-9 w-9 overflow-hidden rounded-lg border border-cyan-300/30 bg-[#02050b] shadow-lg shadow-cyan-500/15">
-            <Image src="/cardyx-logo.jpeg" alt="" fill sizes="36px" className="object-cover object-[50%_20%]" priority />
+          <span className="relative h-9 w-9 overflow-hidden rounded-lg border border-cyan-300/40 bg-[#02050b] shadow-lg shadow-blue-500/25">
+            <Image src="/cardyx-logo-new.jpeg" alt="" fill sizes="36px" className="object-cover" priority />
           </span>
           <span className="text-lg font-bold tracking-tight text-white">
             CARDYX
@@ -89,7 +89,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-1.5 text-[13px] font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition-colors hover:bg-emerald-400"
+              className="cardyx-accent-button flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-semibold text-white transition-all hover:brightness-110"
             >
               <Wallet className="h-4 w-4" />
               <span className="hidden sm:inline">{language === 'de' ? 'Wallet verbinden' : 'Connect Wallet'}</span>
@@ -111,7 +111,7 @@ export default function Navbar() {
       {settingsOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={language === 'de' ? 'Einstellungen' : 'Settings'}>
           <button type="button" aria-label={language === 'de' ? 'Schließen' : 'Close'} onClick={() => setSettingsOpen(false)} className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
-          <section className="relative w-full max-w-sm rounded-xl border border-cyan-400/20 bg-[#0a0f1c] p-5 shadow-2xl shadow-blue-950/50">
+          <section className="cardyx-glass-strong relative w-full max-w-sm rounded-xl p-5">
             <h2 className="text-base font-bold text-white">{language === 'de' ? 'Einstellungen' : 'Settings'}</h2>
             <p className="mt-1 text-xs text-slate-500">{language === 'de' ? 'Sprache der Benutzeroberfläche' : 'Interface language'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">

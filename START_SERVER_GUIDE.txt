@@ -1,0 +1,214 @@
+=======================================================================
+                 CARDYX - SERVER BETRIEBSANLEITUNG
+=======================================================================
+
+Diese Anleitung gilt fuer den CARDYX-Ubuntu-Server im Heimnetz.
+Sie enthaelt keine Passwoerter, privaten SSH-Schluessel oder sonstige
+Geheimnisse.
+
+-----------------------------------------------------------------------
+1. ARCHITEKTUR UND DATENTRAEGER
+-----------------------------------------------------------------------
+
+SSD 1: /srv/cardyx
+  - CARDYX-Projekt:          /srv/cardyx/app
+  - Produktive Compose-Dateien: /srv/cardyx/compose
+  - PostgreSQL-Daten:        /srv/cardyx/data/postgres
+  - Redis-Daten:             /srv/cardyx/data/redis
+  - db-sync Ledger-State:    /srv/cardyx/data/db-sync
+  - Backups:                 /srv/cardyx/backups
+  - Lokale Geheimnisse:      /srv/cardyx/secrets
+
+SSD 2: /srv/cardano-node
+  - Cardano Node Chain-DB:   /srv/cardano-node/db
+  - Node-Konfiguration:      /srv/cardano-node/config
+  - Node Compose-Datei:      /srv/cardano-node/docker-compose.yml
+
+Wichtig:
+  Die Cardano Node schreibt nur auf die Node-SSD.
+  PostgreSQL und cardano-db-sync schreiben nur auf die CARDYX-SSD.
+
+-----------------------------------------------------------------------
+2. MIT DEM SERVER VERBINDEN
+-----------------------------------------------------------------------
+
+Auf dem Windows-Entwicklungsrechner in PowerShell:
+
+  ssh -i "$HOME\.ssh\cardyx_ed25519" cardyx@192.168.178.95
+
+Die IP kann sich nach einem Router- oder Server-Neustart aendern.
+Eine DHCP-Reservierung im Router fuer den Server wird empfohlen.
+
+Nach erfolgreichem Login zeigt das Terminal etwa:
+
+  cardyx@cardyx:~$
+
+Alle folgenden Linux-Befehle werden auf dem Server ausgefuehrt.
+
+-----------------------------------------------------------------------
+3. ALLGEMEINEN SERVERSTATUS PRUEFEN
+-----------------------------------------------------------------------
+
+RAM und Swap:
+
+  free -h
+
+Datentraeger und Einhaengepunkte:
+
+  lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+  df -hT
+
+Docker-Container:
+
+  docker ps
+
+Ressourcen aller CARDYX-Dienste:
+
+  docker stats --no-stream cardyx-cardano-node cardyx-db-sync cardyx-postgres cardyx-redis
+
+-----------------------------------------------------------------------
+4. CARDANO NODE STATUS
+-----------------------------------------------------------------------
+
+Aktuellen Mainnet-Tip und Synchronisationsstand abfragen:
+
+  docker exec -e CARDANO_NODE_SOCKET_PATH=/data/node.socket cardyx-cardano-node cardano-cli query tip --mainnet
+
+Bei einer vollstaendig synchronen Node lautet der relevante Wert:
+
+  "syncProgress": "100.00"
+
+Live-Anzeige, Aktualisierung alle 15 Sekunden:
+
+  watch -n 15 "docker exec -e CARDANO_NODE_SOCKET_PATH=/data/node.socket cardyx-cardano-node cardano-cli query tip --mainnet"
+
+Node-Logs live verfolgen:
+
+  docker logs -f --tail 30 cardyx-cardano-node
+
+Eine Live-Anzeige oder Logs mit Strg+C beenden. Das stoppt niemals die Node.
+
+Node-Compose-Status:
+
+  docker compose -f /srv/cardano-node/docker-compose.yml ps
+
+Node kontrolliert stoppen (nur falls wirklich erforderlich):
+
+  docker compose -f /srv/cardano-node/docker-compose.yml stop
+
+Node wieder starten:
+
+  docker compose -f /srv/cardano-node/docker-compose.yml up -d
+
+Der Container nutzt restart: unless-stopped und startet nach einem Serverstart
+automatisch, sofern er nicht explizit gestoppt wurde.
+
+-----------------------------------------------------------------------
+5. CARDANO DB-SYNC STATUS
+-----------------------------------------------------------------------
+
+Aktuelle Anzahl der in PostgreSQL indexierten Bloecke:
+
+  docker exec cardyx-postgres psql -U cardyx -d cexplorer -tAc "SELECT count(*) AS indexed_blocks FROM block;"
+
+Live-Anzeige des db-sync-Fortschritts:
+
+  watch -n 15 "docker exec cardyx-postgres psql -U cardyx -d cexplorer -tAc 'SELECT count(*) AS indexed_blocks FROM block;'"
+
+db-sync-Containerstatus:
+
+  docker inspect -f 'Status={{.State.Status}} ExitCode={{.State.ExitCode}} Restarts={{.RestartCount}}' cardyx-db-sync
+
+Relevante db-sync-Logs lesen:
+
+  docker logs --tail 100 cardyx-db-sync
+
+db-sync-Compose-Status:
+
+  docker compose -f /srv/cardyx/compose/db-sync-compose.yml ps
+
+PostgreSQL, db-sync und Node-Speicherorte pruefen:
+
+  sudo du -sh /srv/cardyx/data/postgres /srv/cardyx/data/db-sync /srv/cardano-node/db
+
+Der db-sync-Import kann viele Stunden oder Tage dauern. Der Blockzaehler muss
+bei wiederholten Abfragen steigen. Waehrenddessen keine Volumes oder Datenbanken
+loeschen.
+
+-----------------------------------------------------------------------
+6. CARDYX-DATENSCHICHT
+-----------------------------------------------------------------------
+
+Die CARDYX-API greift nicht direkt auf die db-sync-Rohtabellen zu. Sie nutzt
+gezielt freigegebene Views im Schema "cardyx" mit der eingeschraenkten Rolle
+"cardyx_api".
+
+Aktuellen freigegebenen Chain-Status pruefen:
+
+  docker run --rm --network cardyx-internal --env-file /srv/cardyx/secrets/cardyx-api.env postgres:16-alpine sh -c 'psql "$CARDYX_DATABASE_URL" -c "SELECT * FROM cardyx.chain_status;"'
+
+Die lokale Verbindungsdatei /srv/cardyx/secrets/cardyx-api.env ist geheim und
+darf niemals in Git, Logs oder Chat-Nachrichten kopiert werden.
+
+-----------------------------------------------------------------------
+7. POSTGRESQL UND REDIS
+-----------------------------------------------------------------------
+
+Produktive Datenbank- und Cache-Dienste pruefen:
+
+  docker compose -f /srv/cardyx/compose/docker-compose.yml ps
+
+PostgreSQL-Verbindung pruefen:
+
+  docker exec cardyx-postgres pg_isready -U cardyx -d cexplorer
+
+Redis pruefen:
+
+  docker exec cardyx-redis redis-cli ping
+
+Erwartete Antworten:
+
+  PostgreSQL: accepting connections
+  Redis: PONG
+
+-----------------------------------------------------------------------
+8. GEPLANT HERUNTERFAHREN ODER NEUSTARTEN
+-----------------------------------------------------------------------
+
+Server kontrolliert herunterfahren:
+
+  sudo poweroff
+
+Server kontrolliert neu starten:
+
+  sudo reboot
+
+Die Node- und db-sync-Daten bleiben auf den SSDs erhalten. Nach dem Start
+setzen die Container ihre Arbeit fort. Bei einem kurzen Ausfall muss nur die
+verpasste Blockchain-Zeit nachgeladen werden.
+
+Kein hartes Ausschalten, sofern es vermeidbar ist.
+
+-----------------------------------------------------------------------
+9. SICHERHEIT UND WICHTIGE DATEIEN
+-----------------------------------------------------------------------
+
+SSH ist auf Schluesselanmeldung beschraenkt. Passwort- und Root-Login sind
+deaktiviert. Die Firewall erlaubt SSH nur aus dem lokalen Heimnetz.
+
+Wichtige serverlokale Dateien:
+
+  /srv/cardyx/secrets/database.env
+  /srv/cardyx/secrets/cardyx-api.env
+  /srv/cardyx/compose/docker-compose.yml
+  /srv/cardyx/compose/db-sync-compose.yml
+  /srv/cardano-node/docker-compose.yml
+  /etc/fstab
+
+Niemals nach Git committen oder weitergeben:
+
+  - /srv/cardyx/secrets/database.env
+  - private SSH-Schluessel wie cardyx_ed25519
+  - Datenbank- oder Node-Volumes
+
+=======================================================================

@@ -89,6 +89,28 @@ app.get('/', (req, res) => {
   res.json({ status: 'online', message: 'CARDYX Backend läuft fehlerfrei mit nativem PG-Treiber!' });
 });
 
+// Eigener Chain-Status aus der kontrollierten CARDYX-Datenschicht.
+app.get('/api/chain/status', async (_req, res) => {
+  try {
+    const result = await pool.query<{
+      block_no: number | null;
+      slot_no: number | null;
+      block_time: string;
+      block_hash: string;
+    }>('SELECT block_no, slot_no, block_time, block_hash FROM cardyx.chain_status');
+
+    const status = result.rows[0];
+    if (!status) {
+      return res.status(503).json({ success: false, error: 'Die CARDYX-Chain-Daten sind noch nicht bereit.' });
+    }
+
+    res.json({ success: true, data: status });
+  } catch (error: any) {
+    console.error('Fehler beim Lesen des CARDYX-Chain-Status:', error.message);
+    res.status(503).json({ success: false, error: 'Die CARDYX-Chain-Daten sind aktuell nicht verfügbar.' });
+  }
+});
+
 // TEST-ROUTE: Schreibt den Test-Token live in deine Docker-Datenbank
 app.get('/api/v1/test-seed', async (req, res) => {
   try {

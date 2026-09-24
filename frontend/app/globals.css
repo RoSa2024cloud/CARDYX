@@ -9,8 +9,19 @@ html {
   color-scheme: dark;
 }
 
+:root {
+  --cardyx-void: #040611;
+  --cardyx-ink: #070b1c;
+  --cardyx-cyan: #22d3ee;
+  --cardyx-blue: #2563eb;
+  --cardyx-violet: #8b5cf6;
+  --cardyx-glass: rgba(8, 14, 35, 0.72);
+  --cardyx-glass-strong: rgba(7, 11, 28, 0.9);
+  --cardyx-line: rgba(96, 165, 250, 0.24);
+}
+
 body {
-  background-color: #05070d;
+  background-color: var(--cardyx-void);
   color: #e2e8f0;
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
@@ -19,8 +30,8 @@ body {
   position: relative;
   isolation: isolate;
   background:
-    linear-gradient(115deg, rgba(5, 7, 13, 0.98) 0%, rgba(4, 17, 21, 0.97) 52%, rgba(5, 12, 16, 0.98) 100%),
-    #05070d;
+    linear-gradient(115deg, rgba(4, 6, 17, 0.98) 0%, rgba(8, 17, 47, 0.96) 52%, rgba(13, 9, 37, 0.98) 100%),
+    var(--cardyx-void);
 }
 
 .cardyx-dashboard::before {
@@ -31,11 +42,30 @@ body {
   width: min(40vw, 520px);
   height: min(40vw, 520px);
   content: '';
-  background: url('/cardyx-logo.jpeg') center / cover no-repeat;
+  background: url('/cardyx-logo-new.jpeg') center / cover no-repeat;
   opacity: 0.055;
-  filter: saturate(0.8);
+  filter: saturate(1.1);
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.cardyx-glass {
+  border: 1px solid var(--cardyx-line);
+  background: linear-gradient(135deg, rgba(18, 30, 67, 0.72), rgba(7, 11, 28, 0.78));
+  box-shadow: 0 22px 70px rgba(1, 4, 19, 0.55), inset 0 1px 0 rgba(186, 230, 253, 0.09);
+  backdrop-filter: blur(20px) saturate(135%);
+}
+
+.cardyx-glass-strong {
+  border: 1px solid rgba(96, 165, 250, 0.36);
+  background: linear-gradient(145deg, rgba(19, 34, 78, 0.86), rgba(7, 10, 30, 0.94));
+  box-shadow: 0 28px 85px rgba(1, 4, 19, 0.68), 0 0 34px rgba(37, 99, 235, 0.13), inset 0 1px 0 rgba(224, 231, 255, 0.12);
+  backdrop-filter: blur(24px) saturate(145%);
+}
+
+.cardyx-accent-button {
+  background: linear-gradient(100deg, var(--cardyx-blue), var(--cardyx-cyan) 58%, var(--cardyx-violet));
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28);
 }
 
 /* Versteckte Scrollbar für horizontale Reihen (Carousel, Featured, Trending) */
