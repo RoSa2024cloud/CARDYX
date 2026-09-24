@@ -17,17 +17,17 @@ SELECT
   NULL::numeric AS price_usd,
   'on-chain'::text AS data_source
 FROM cardyx.asset_catalog_public c
-LEFT JOIN (
+LEFT JOIN LATERAL (
   SELECT
-    policy_id,
-    asset_name,
-    count(DISTINCT address) AS holder_count,
+    count(DISTINCT u.address) AS holder_count,
     count(*) AS utxo_count,
-    sum(quantity) AS circulating_quantity,
-    max(block_time) AS latest_activity
-  FROM cardyx.asset_utxo
-  GROUP BY policy_id, asset_name
-) a ON a.policy_id = c.policy_id AND a.asset_name = c.asset_name;
+    sum(u.quantity) AS circulating_quantity,
+    max(u.block_time) AS latest_activity
+  FROM cardyx.asset_utxo u
+  WHERE c.policy_id IS NOT NULL
+    AND u.policy_id = c.policy_id
+    AND u.asset_name = c.asset_name
+) a ON true;
 
 UPDATE cardyx.asset_catalog
 SET policy_id = '27925e5f343eceb211bb3d7a659c6f97488f187ccbdaef01c13a0874',
