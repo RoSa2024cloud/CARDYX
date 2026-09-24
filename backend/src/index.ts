@@ -20,7 +20,7 @@ const DATABASE_URL =
   'postgresql://cardyx_admin:secret_local_password@localhost:5432/cardyx_dev?schema=public';
 
 const databaseHost = new URL(DATABASE_URL).hostname;
-const useDatabaseSsl = !['localhost', '127.0.0.1', '::1'].includes(databaseHost);
+const useDatabaseSsl = !['localhost', '127.0.0.1', '::1', 'postgres'].includes(databaseHost);
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
