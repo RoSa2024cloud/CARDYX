@@ -66,6 +66,31 @@ export default function TokenExplorerPage() {
       .finally(() => setLoading(false));
   }, [tokenId]);
 
+  useEffect(() => {
+    if (!tokenId) return;
+
+    fetch(`${API_URL}/api/market/onchain`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => {
+        const chainToken = json?.success
+          ? json.data?.tokens?.find((entry: { market_id?: string }) => entry.market_id === tokenId)
+          : null;
+        if (!chainToken) return;
+
+        setToken((current) => current ? {
+          ...current,
+          policyId: chainToken.policy_id ?? current.policyId,
+          assetName: chainToken.asset_name ?? current.assetName,
+          holderCount: Number(chainToken.holder_count ?? 0),
+          utxoCount: Number(chainToken.utxo_count ?? 0),
+          circulatingQuantity: Number(chainToken.circulating_quantity ?? 0),
+          latestActivity: chainToken.latest_activity ?? null,
+          snapshotRefreshedAt: chainToken.refreshed_at ?? null,
+        } : current);
+      })
+      .catch(() => undefined);
+  }, [tokenId]);
+
   if (loading) {
     return <ExplorerLoading />;
   }
@@ -193,7 +218,7 @@ export default function TokenExplorerPage() {
               <IdentityRow label="Ticker" value={token.ticker} />
               <IdentityRow label="CoinGecko-ID" value={token.id} />
               <IdentityRow label="Policy ID" value={token.policyId ?? 'Wird mit dem Cardano Data Layer indexiert'} mono />
-              <IdentityRow label="Asset Name" value="Wird mit dem Cardano Data Layer indexiert" />
+                <IdentityRow label="Asset Name" value={token.assetName ?? 'Noch nicht im Asset-Katalog zugeordnet'} mono />
             </Panel>
 
             <OnChainPanel token={token} />
@@ -204,7 +229,7 @@ export default function TokenExplorerPage() {
                 <div>
                   <h2 className="text-sm font-bold text-amber-200">Analyse-Hinweis</h2>
                   <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                    Marktdaten werden live von CoinGecko bereitgestellt. On-Chain-Werte werden erst nach Start des eigenen CARDYX Indexers verifiziert. Keine Anlageberatung.
+                    Marktpreise stammen aktuell aus dem Marktadapter. On-Chain-Werte werden nur angezeigt, wenn sie durch den eigenen CARDYX Data Layer verifiziert sind. Keine Anlageberatung.
                   </p>
                 </div>
               </div>
@@ -229,19 +254,24 @@ export default function TokenExplorerPage() {
 }
 
 function OnChainPanel({ token }: { token: MarketToken }) {
+  const hasSnapshot = Boolean(token.snapshotRefreshedAt);
+
   return (
     <Panel title="On-Chain Intelligence" icon={Users} compact>
       <p className="mb-4 text-xs leading-relaxed text-slate-500">
-        Diese Kennzahlen benötigen den im Masterplan vorgesehenen Cardano Data Layer und werden nicht geschätzt dargestellt.
+        {hasSnapshot
+          ? `Verifiziert aus dem CARDYX Data Layer · aktualisiert ${formatDate(token.snapshotRefreshedAt ?? null)}`
+          : 'Für diesen Token liegt noch kein verifizierter CARDYX-Snapshot vor.'}
       </p>
-      {['Liquidität & DEX-Paare', 'Transaktionen & Trading-Historie', 'Holder & Holder Distribution', 'Top Holder', 'Liquiditätsentwicklung'].map((label) => (
-        <div key={label} className="flex items-center justify-between border-t border-white/5 py-2.5 first:border-t-0 first:pt-0">
-          <span className="text-xs text-slate-400">{label}</span>
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-600">
-            Data Layer folgt <ChevronRight className="h-3 w-3" />
-          </span>
+      <div className="space-y-3">
+        <IdentityRow label="Holder" value={hasSnapshot ? formatCompactNumber(token.holderCount ?? 0) : 'Noch nicht indexiert'} />
+        <IdentityRow label="Aktive UTxOs" value={hasSnapshot ? formatCompactNumber(token.utxoCount ?? 0) : 'Noch nicht indexiert'} />
+        <IdentityRow label="Umlaufmenge On-Chain" value={hasSnapshot ? formatCompactNumber(token.circulatingQuantity ?? 0) : 'Noch nicht indexiert'} />
+        <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs text-slate-500">
+          <span>DEX-Liquidität und Trading-Historie</span>
+          <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-600">DEX-Index folgt <ChevronRight className="h-3 w-3" /></span>
         </div>
-      ))}
+      </div>
     </Panel>
   );
 }

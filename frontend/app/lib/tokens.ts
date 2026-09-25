@@ -36,6 +36,12 @@ export interface MarketToken {
   sparkline7d: number[];
   category?: string;
   catalogVerified?: boolean;
+  assetName?: string | null;
+  holderCount?: number;
+  utxoCount?: number;
+  circulatingQuantity?: number;
+  latestActivity?: string | null;
+  snapshotRefreshedAt?: string | null;
 }
 
 export interface ChartCandle {
