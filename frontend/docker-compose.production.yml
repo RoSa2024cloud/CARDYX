@@ -1,0 +1,20 @@
+name: cardyx-frontend
+
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: ""
+        CARDYX_INTERNAL_API_URL: http://cardyx-api:4000
+    container_name: cardyx-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - api
+
+networks:
+  api:
+    external: true
+    name: cardyx-internal
