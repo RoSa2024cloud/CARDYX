@@ -20,6 +20,8 @@ interface TradePanelProps {
 interface DexHunterToken {
   token_id: string;
   ticker: string;
+  name?: string;
+  image?: string | null;
 }
 
 interface SwapQuote {
@@ -38,6 +40,8 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
   const [sellAmount, setSellAmount] = useState('100');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
+  const [remoteTokens, setRemoteTokens] = useState<DexHunterToken[]>([]);
+  const [remoteSearchState, setRemoteSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [asset, setAsset] = useState<DexHunterToken | null>(null);
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoteState, setQuoteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -60,6 +64,74 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
     const available = tokens.filter((token) => token.ticker !== 'ADA');
     return query ? available.filter((token) => token.ticker.toLowerCase().includes(query) || token.name.toLowerCase().includes(query)) : available;
   }, [tokens, pickerQuery]);
+
+  useEffect(() => {
+    const query = pickerQuery.trim();
+    if (!pickerOpen || query.length < 2) {
+      setRemoteTokens([]);
+      setRemoteSearchState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setRemoteSearchState('loading');
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/trade/tokens?query=${encodeURIComponent(query)}`);
+        const json = await response.json();
+        if (!response.ok || !json.success || !Array.isArray(json.data)) throw new Error('Search failed');
+        if (!cancelled) {
+          setRemoteTokens(json.data.filter((entry: DexHunterToken) => entry?.token_id && entry?.ticker));
+          setRemoteSearchState('ready');
+        }
+      } catch {
+        if (!cancelled) {
+          setRemoteTokens([]);
+          setRemoteSearchState('error');
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pickerOpen, pickerQuery]);
+
+  const selectRemoteToken = (token: DexHunterToken) => {
+    onSelectToken({
+      id: token.token_id,
+      ticker: token.ticker.toUpperCase(),
+      name: token.name ?? token.ticker,
+      image: token.image ?? null,
+      policyId: null,
+      priceUsd: 0,
+      priceAda: 0,
+      change24h: 0,
+      change7d: 0,
+      volume24hUsd: 0,
+      marketCapUsd: 0,
+      fdvUsd: 0,
+      volume24hAda: 0,
+      marketCapAda: 0,
+      fdvAda: 0,
+      marketCapRank: null,
+      circulatingSupply: 0,
+      totalSupply: null,
+      maxSupply: null,
+      athUsd: 0,
+      athChangePct: 0,
+      athDate: null,
+      atlUsd: 0,
+      atlChangePct: 0,
+      atlDate: null,
+      high24hUsd: 0,
+      low24hUsd: 0,
+      sparkline7d: [],
+    });
+    setPickerOpen(false);
+    setPickerQuery('');
+  };
 
   // DexHunter liefert die vollständige, handelbare Asset-ID und die echte Quote.
   useEffect(() => {
@@ -143,6 +215,29 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Zap className="h-4 w-4 text-cyan-300" />TRADE Terminal</h2>
         <div className="flex items-center gap-2"><span className="flex items-center gap-1.5 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-bold text-green-400">{copy.liveQuote}</span>{onClose && <button type="button" onClick={onClose} aria-label={copy.close} className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>}</div>
       </div>
+      {pickerOpen && remoteTokens.length > 0 && (
+        <div className="border-b border-cyan-200/10 bg-cyan-300/[0.03] p-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">
+            {language === 'de' ? 'DexHunter-Suchergebnisse' : 'DexHunter search results'}
+          </p>
+          <div className="max-h-36 space-y-1 overflow-y-auto">
+            {remoteTokens.map((token) => (
+              <button
+                key={`remote-panel-${token.token_id}`}
+                type="button"
+                onClick={() => selectRemoteToken(token)}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-cyan-300/10"
+              >
+                <TokenLogo src={token.image ?? null} ticker={token.ticker} size={22} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-bold text-white">{token.ticker}</span>
+                  <span className="block truncate text-[10px] text-slate-500">{token.name ?? token.token_id}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="space-y-3 p-4">
         <div><label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">{copy.pay}</label><div className="rounded-xl border border-white/10 bg-[#05070d] p-3 focus-within:border-blue-500/50"><div className="flex items-center justify-between gap-3"><input type="text" inputMode="decimal" value={sellAmount} onChange={(event) => setSellAmount(event.target.value.replace(/[^0-9.,]/g, ''))} className="w-full bg-transparent text-xl font-bold text-white focus:outline-none" /><span className="rounded-lg bg-white/5 px-2.5 py-1.5 text-sm font-bold text-white">₳ ADA</span></div><p className="mt-1 text-[11px] text-slate-500">≈ {adaPriceUsd && amountAda > 0 ? formatUsd(amountAda * adaPriceUsd, 2) : '$0.00'}</p></div><div className="mt-2 flex gap-1.5">{QUICK_AMOUNTS.map((value) => <button key={value} type="button" onClick={() => setSellAmount(String(value))} className={`flex-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${amountAda === value ? 'border-blue-500/50 bg-blue-600/20 text-blue-300' : 'border-white/5 bg-white/[0.02] text-slate-400'}`}>{value} ₳</button>)}</div></div>
         <div className="flex justify-center"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10"><ArrowDownUp className="h-3.5 w-3.5 text-slate-400" /></span></div>
