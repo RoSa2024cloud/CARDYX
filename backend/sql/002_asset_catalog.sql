@@ -43,7 +43,6 @@ VALUES
   ('xerberus', 'XER', 'Xerberus', 'infrastructure'),
   ('wingriders', 'WRT', 'WingRiders', 'defi'),
   ('optim-finance', 'O', 'Optim Finance', 'defi'),
-  ('nunet', 'NTX', 'NuNet', 'ai'),
   ('surge-3', 'SURGE', 'Surge', 'defi'),
   ('nikepig', 'NIKEPIG', 'Nikepig', 'meme'),
   ('titan-3', 'TITAN', 'Titan', 'meme'),
