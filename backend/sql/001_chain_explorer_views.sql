@@ -29,7 +29,13 @@ JOIN public.multi_asset ma ON ma.id = mto.ident
 JOIN public.tx_out o ON o.id = mto.tx_out_id
 JOIN public.tx t ON t.id = o.tx_id
 JOIN public.block b ON b.id = t.block_id
-WHERE o.consumed_by_tx_id IS NULL;
+WHERE o.consumed_by_tx_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.tx_in i
+    WHERE i.tx_out_id = o.tx_id
+      AND i.tx_out_index = o.index
+  );
 
 CREATE OR REPLACE VIEW cardyx.address_utxo AS
 SELECT

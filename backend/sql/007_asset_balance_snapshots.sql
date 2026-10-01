@@ -67,6 +67,12 @@ BEGIN
   WHERE ma.policy = decode(requested_policy_id, 'hex')
     AND ma.name = decode(requested_asset_name, 'hex')
     AND o.consumed_by_tx_id IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.tx_in i
+      WHERE i.tx_out_id = o.tx_id
+        AND i.tx_out_index = o.index
+    )
   ON CONFLICT (policy_id, asset_name) DO UPDATE SET
     holder_count = EXCLUDED.holder_count,
     utxo_count = EXCLUDED.utxo_count,

@@ -2,7 +2,9 @@
 
 import { Flame } from 'lucide-react';
 import TokenLogo from './TokenLogo';
-import { MarketToken, formatAdaPrice, formatChange } from '../lib/tokens';
+import { useLanguage } from './LanguageProvider';
+import { MarketToken, formatChange, formatTokenPrice } from '../lib/tokens';
+import { useCurrency } from './CurrencyProvider';
 
 interface TrendingRowProps {
   tokens: MarketToken[];
@@ -15,6 +17,8 @@ interface TrendingRowProps {
  * Die Liste wird verdoppelt gerendert, damit der Loop nahtlos wirkt.
  */
 export default function TrendingRow({ tokens, onSelectToken }: TrendingRowProps) {
+  const { language } = useLanguage();
+  const { currency } = useCurrency();
   if (tokens.length === 0) return null;
 
   const marqueeTokens = [...tokens, ...tokens];
@@ -23,7 +27,7 @@ export default function TrendingRow({ tokens, onSelectToken }: TrendingRowProps)
     <section aria-label="Trending Tokens">
       <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
         <Flame className="h-3.5 w-3.5 text-orange-400" />
-        Trending · 24h
+        {language === 'de' ? 'Trends · 24 Stunden' : 'Trending · 24h'}
       </h2>
 
       <div className="group relative -mx-4 overflow-hidden sm:-mx-6">
@@ -43,7 +47,7 @@ export default function TrendingRow({ tokens, onSelectToken }: TrendingRowProps)
             >
               <TokenLogo src={token.image} ticker={token.ticker} size={26} />
               <span className="text-[13px] font-bold text-white">{token.ticker}</span>
-              <span className="text-[11px] text-slate-500">{formatAdaPrice(token.priceAda)}</span>
+              <span className="text-[11px] text-slate-500">{formatTokenPrice(token.priceAda, token.priceUsd, currency)}</span>
               <span
                 className={`text-[12px] font-bold ${
                   token.change24h > 0

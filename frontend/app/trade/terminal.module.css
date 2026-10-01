@@ -1,0 +1,432 @@
+.workspace {
+  display: grid;
+  gap: 5px;
+}
+
+.topBar {
+  border-bottom: 2px solid transparent;
+  background:
+    linear-gradient(#030a1b, #030a1b) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: 0 3px 18px rgba(112, 68, 235, 0.23);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.searchGlass {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#071833, #071833) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 12px rgba(65, 118, 226, 0.2), 0 0 14px rgba(82, 105, 238, 0.3);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.searchGlass:focus {
+  box-shadow: inset 0 0 12px rgba(65, 118, 226, 0.2), 0 0 18px rgba(45, 244, 255, 0.4);
+}
+
+.pairSelect {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#0a1930, #0a1930) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: 0 0 8px rgba(105, 108, 239, 0.18);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.pairSelect:focus {
+  box-shadow: 0 0 12px rgba(45, 244, 255, 0.34);
+}
+
+.pairMenu {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#081329, #0d1029) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.13), 0 18px 36px rgba(0, 5, 20, 0.85), 0 0 22px rgba(160, 74, 241, 0.35);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.sidebarGlass {
+  border-right: 2px solid transparent;
+  background:
+    linear-gradient(#040b1c, #040b1c) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset -1px 0 0 rgba(215, 238, 255, 0.14), 5px 0 15px rgba(98, 94, 241, 0.25);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.activeNav {
+  border: 2px solid transparent;
+  color: #d9f8ff;
+  background:
+    linear-gradient(#0c2142, #111537) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.12), 0 0 12px rgba(142, 77, 241, 0.25);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  border: 1px solid rgba(67, 155, 255, 0.43);
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: rgba(8, 25, 54, 0.9);
+  box-shadow: inset 0 1px 0 rgba(164, 226, 255, 0.12), 0 0 10px rgba(74, 116, 245, 0.2);
+  color: #aac5e2;
+  font-size: 10px;
+}
+
+.walletGlass {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(155deg, #091930, #071126 70%, #131026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.13), 0 0 15px rgba(84, 100, 241, 0.2);
+  animation: glassEdge 22s ease-in-out infinite alternate;
+}
+
+.chartPane,
+.activityPane,
+.orderPane,
+.tradePane {
+  min-width: 0;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  border-radius: 6px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.placeholder {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, #0a1830, #071026 60%, #0e1026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow:
+    inset 0 0 0 1px rgba(205, 232, 255, 0.17),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 0 10px rgba(34, 161, 255, 0.3),
+    0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.quickActions {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 7px 8px 8px;
+  background:
+    linear-gradient(150deg, #0a1830, #0d1128 65%, #15102b) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(34, 161, 255, 0.3), 0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.quickButton {
+  border: 1px solid rgba(82, 146, 255, 0.45);
+  background: linear-gradient(180deg, rgba(38, 118, 255, 0.16), rgba(10, 22, 48, 0.85));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 6px rgba(38, 118, 255, 0.18);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.quickButton:not(:disabled):hover {
+  border-color: rgba(45, 244, 255, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 10px rgba(45, 244, 255, 0.35);
+}
+
+.quickButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.buyBanner {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(118, 162, 255, 0.3);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background:
+    radial-gradient(circle at 12% 50%, rgba(38, 118, 255, 0.28), transparent 45%),
+    linear-gradient(110deg, rgba(10, 24, 54, 0.95), rgba(23, 14, 48, 0.95));
+}
+
+.adaOrb {
+  display: flex;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(45, 244, 255, 0.7);
+  background: radial-gradient(circle at 35% 30%, #3d8bff, #1a2f8a 70%);
+  box-shadow: 0 0 14px rgba(45, 244, 255, 0.55), 0 0 26px rgba(163, 81, 239, 0.3);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.buyArrow {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(45, 244, 255, 0.6);
+  background: linear-gradient(135deg, #2676ff, #a351ef);
+  box-shadow: 0 0 10px rgba(38, 118, 255, 0.5);
+  color: #fff;
+}
+
+.buyArrow:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.fearPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 3px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 8px;
+  background:
+    linear-gradient(150deg, #0a1830, #0d1128 65%, #15102b) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(118, 79, 231, 0.25);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.fearIcon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a351ef, #2676ff);
+  box-shadow: 0 0 8px rgba(163, 81, 239, 0.6);
+}
+
+.fearArc {
+  filter: drop-shadow(0 0 4px rgba(45, 244, 255, 0.6));
+}
+
+.fearHint {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(118, 162, 255, 0.28);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: rgba(8, 16, 36, 0.75);
+  font-size: 9px;
+}
+
+.chartPane > :global(section) {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, #0a1830, #071026 60%, #0e1026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(34, 161, 255, 0.3), 0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.activityPane :global(section) {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, #0a1830, #071026 60%, #0e1026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(34, 161, 255, 0.3), 0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.orderPane > :global(section) {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, #0a1830, #071026 60%, #0e1026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(34, 161, 255, 0.3), 0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.tradePane > :global(aside) {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, #0a1830, #071026 60%, #0e1026) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(34, 161, 255, 0.3), 0 0 22px rgba(171, 71, 227, 0.14);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+@keyframes glassEdge {
+  from { background-position: 0 0, 0% 50%; }
+  to { background-position: 0 0, 100% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topBar,
+  .searchGlass,
+  .pairSelect,
+  .pairMenu,
+  .sidebarGlass,
+  .activeNav,
+  .walletGlass,
+  .fearPanel,
+  .quickActions,
+  .placeholder {
+    animation: none;
+  }
+  .chartPane > :global(section) { animation: none; }
+  .activityPane :global(section) { animation: none; }
+  .orderPane > :global(section) { animation: none; }
+  .tradePane > :global(aside) { animation: none; }
+}
+
+@media (min-width: 1024px) {
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(270px, 310px) minmax(270px, 310px);
+    grid-template-rows: minmax(0, 1fr) minmax(175px, 0.48fr);
+  }
+
+  .chartPane {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  .chartPane > :global(section) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 6px;
+  }
+
+  .chartPane > :global(section) > :global(div:nth-last-child(2)) {
+    flex: 1;
+    min-height: 0;
+    height: auto !important;
+  }
+
+  .activityPane {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+  }
+
+  .activityPane > :global(div) {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .activityPane :global(section) {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 6px;
+  }
+
+  .activityPane :global(section > div.overflow-x-auto) {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .orderPane {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  .orderPane > :global(section) {
+    height: 100%;
+    overflow: auto;
+    border-radius: 6px;
+  }
+
+  .workspace > .placeholder {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .workspace > .fearPanel {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .tradePane {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    display: grid;
+    gap: 5px;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr) minmax(150px, 0.34fr);
+  }
+
+  .tradePane > :global(aside) {
+    min-height: 0;
+    overflow: auto;
+    border-radius: 6px;
+  }
+
+}
+
+@media (min-width: 1024px) and (max-height: 760px) {
+  .workspace {
+    grid-template-rows: minmax(0, 1fr) 155px;
+  }
+
+  .chartPane > :global(section) > :global(div:first-child) {
+    padding: 6px 10px;
+  }
+
+  .chartPane > :global(section) > :global(div:nth-child(2)),
+  .chartPane > :global(section) > :global(div:nth-child(3)) {
+    padding: 4px 10px;
+  }
+
+  .chartPane > :global(section) > :global(div:last-child) {
+    padding: 4px 10px;
+  }
+}

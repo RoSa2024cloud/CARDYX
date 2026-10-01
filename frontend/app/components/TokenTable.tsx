@@ -5,30 +5,21 @@ import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import TokenLogo from './TokenLogo';
 import { useLanguage } from './LanguageProvider';
 import {
+  ActiveMarketPool,
   MarketToken,
-  formatAdaPrice,
   formatChange,
-  formatCompactAda,
+  formatMarketValue,
+  formatTokenPrice,
 } from '../lib/tokens';
+import { useCurrency } from './CurrencyProvider';
 
-type SortKey = 'marketCapAda' | 'priceAda' | 'change24h' | 'change7d' | 'volume24hAda' | 'fdvAda';
+type SortKey = 'marketCapAda' | 'marketCapUsd' | 'priceAda' | 'priceUsd' | 'change24h' | 'change7d' | 'volume24hAda' | 'volume24hUsd' | 'fdvAda' | 'fdvUsd';
 
 interface Column {
   label: string;
   key?: SortKey;
   alignRight?: boolean;
 }
-
-const COLUMNS: Column[] = [
-  { label: '#' },
-  { label: 'Token' },
-  { label: 'Price', key: 'priceAda', alignRight: true },
-  { label: '24h', key: 'change24h', alignRight: true },
-  { label: '7d / chart', key: 'change7d', alignRight: true },
-  { label: 'Volume 24h', key: 'volume24hAda', alignRight: true },
-  { label: 'Market Cap', key: 'marketCapAda', alignRight: true },
-  { label: 'FDV', key: 'fdvAda', alignRight: true },
-];
 
 const PAGE_SIZE = 50;
 const CATEGORIES = [
@@ -43,18 +34,32 @@ const CATEGORIES = [
   { id: 'meme', de: 'Memes', en: 'Memes' },
   { id: 'rwa', de: 'RWA', en: 'RWA' },
   { id: 'other', de: 'Weitere', en: 'Other' },
+  { id: 'liqwid', de: 'Liqwid', en: 'Liqwid' },
 ] as const;
 
 interface TokenTableProps {
   tokens: MarketToken[];
   loading: boolean;
   onSelectToken: (token: MarketToken) => void;
+  marketSource?: string;
 }
 
 /** Zentrale Token-Tabelle: Top 50 Cardano-Ökosystem-Token (Live-Daten). */
-export default function TokenTable({ tokens, loading, onSelectToken }: TokenTableProps) {
+export default function TokenTable({ tokens, loading, onSelectToken, marketSource = 'CARDYX Local Feed' }: TokenTableProps) {
   const { language } = useLanguage();
-  const [sortKey, setSortKey] = useState<SortKey>('marketCapAda');
+  const { currency } = useCurrency();
+  const adaMode = currency === 'ADA';
+  const columns: Column[] = [
+    { label: '#' }, { label: 'Token' },
+    { label: language === 'de' ? 'Aktivierte LPs' : 'Activated LPs' },
+    { label: `${language === 'de' ? 'Preis' : 'Price'} (${currency})`, key: adaMode ? 'priceAda' : 'priceUsd', alignRight: true },
+    { label: '24h', key: 'change24h', alignRight: true },
+    { label: language === 'de' ? '7T / Chart' : '7d / chart', key: 'change7d', alignRight: true },
+    { label: `${language === 'de' ? 'Volumen 24h' : 'Volume 24h'} (${currency})`, key: adaMode ? 'volume24hAda' : 'volume24hUsd', alignRight: true },
+    { label: `${language === 'de' ? 'Marktkapitalisierung' : 'Market Cap'} (${currency})`, key: adaMode ? 'marketCapAda' : 'marketCapUsd', alignRight: true },
+    { label: `FDV (${currency})`, key: adaMode ? 'fdvAda' : 'fdvUsd', alignRight: true },
+  ];
+  const [sortKey, setSortKey] = useState<SortKey>(adaMode ? 'marketCapAda' : 'marketCapUsd');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>('all');
@@ -68,18 +73,28 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
             t.name.toLowerCase().includes(query.toLowerCase())
         )
       : tokens;
-    const filtered = category === 'all' ? searched : searched.filter((token) => (token.category ?? 'other') === category);
+    const filtered = category === 'all'
+      ? searched
+      : category === 'liqwid'
+        ? searched.filter((token) => token.protocol === 'Liqwid')
+        : searched.filter((token) => (token.category ?? 'other') === category);
     const direction = sortAsc ? 1 : -1;
     return [...filtered].sort((a, b) => (a[sortKey] - b[sortKey]) * direction);
   }, [tokens, query, category, sortKey, sortAsc]);
 
   const pageCount = Math.max(1, Math.ceil(visibleTokens.length / PAGE_SIZE));
   const pageTokens = visibleTokens.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const maxMarketCap = Math.max(...visibleTokens.map((t) => t.marketCapAda), 1);
+  const maxMarketCap = Math.max(...visibleTokens.map((token) => adaMode ? token.marketCapAda : token.marketCapUsd), 1);
 
   useEffect(() => {
     setPage((currentPage) => Math.min(currentPage, pageCount));
   }, [pageCount]);
+
+  useEffect(() => {
+    setSortKey(adaMode ? 'marketCapAda' : 'marketCapUsd');
+    setSortAsc(false);
+    setPage(1);
+  }, [adaMode]);
 
   const handleSort = (key?: SortKey) => {
     if (!key) return;
@@ -136,17 +151,17 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-60"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
           </span>
-          {visibleTokens.length} {language === 'de' ? 'Token · Live via CoinGecko' : 'tokens · Live via CoinGecko'}
+          {visibleTokens.length} {language === 'de' ? `Token · ${marketSource}` : `tokens · ${marketSource}`}
         </span>
         </div>
       </div>
 
       {/* Tabelle */}
       <div className="overflow-x-auto rounded-2xl border border-white/5 bg-white/[0.01]">
-        <table className="w-full min-w-[960px] border-collapse text-sm">
+        <table className="w-full min-w-[1040px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-white/5 text-left">
-              {COLUMNS.map((col) => (
+              {columns.map((col) => (
                 <th
                   key={col.label}
                   onClick={() => handleSort(col.key)}
@@ -181,7 +196,7 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
                         </div>
                       </div>
                     </td>
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-4 py-3.5">
                         <div className="ml-auto h-4 w-16 rounded bg-white/5" />
                       </td>
@@ -212,9 +227,13 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
                       </div>
                     </td>
 
+                    <td className="px-4 py-3.5">
+                      <ActivePoolLogos pools={token.activePools ?? []} />
+                    </td>
+
                     {/* Preis in ADA */}
                     <td className="px-4 py-3.5 text-right font-semibold text-slate-100">
-                      {formatAdaPrice(token.priceAda)}
+                      {formatTokenPrice(token.priceAda, token.priceUsd, currency)}
                     </td>
 
                     {/* Veränderungen */}
@@ -234,20 +253,20 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
 
                     {/* Volumen */}
                     <td className="px-4 py-3.5 text-right text-slate-300">
-                      {formatCompactAda(token.volume24hAda)}
+                      {formatMarketValue(token.volume24hAda, token.volume24hUsd, currency)}
                     </td>
 
                     {/* Market Cap + Mini-Balken */}
                     <td className="px-4 py-3.5 text-right">
                       <p className="font-semibold text-blue-300">
-                        {formatCompactAda(token.marketCapAda)}
+                        {formatMarketValue(token.marketCapAda, token.marketCapUsd, currency)}
                       </p>
-                      <MiniBar value={token.marketCapAda} max={maxMarketCap} />
+                      <MiniBar value={adaMode ? token.marketCapAda : token.marketCapUsd} max={maxMarketCap} />
                     </td>
 
                     {/* FDV */}
                     <td className="px-4 py-3.5 text-right text-slate-300">
-                      {formatCompactAda(token.fdvAda)}
+                      {formatMarketValue(token.fdvAda, token.fdvUsd, currency)}
                     </td>
                   </tr>
                 ))}
@@ -285,6 +304,67 @@ export default function TokenTable({ tokens, loading, onSelectToken }: TokenTabl
 // ---------------------------------------------------------------------------
 // Sub-Komponenten
 // ---------------------------------------------------------------------------
+
+const DEX_POOL_LOGOS: Record<string, { name: string; shortName: string; image: string }> = {
+  minswap: { name: 'Minswap', shortName: 'MI', image: 'https://minswap.org/favicon.ico' },
+  sundaeswap: { name: 'SundaeSwap', shortName: 'SU', image: 'https://sundaeswap.finance/favicon.ico' },
+  wingriders: { name: 'WingRiders', shortName: 'WR', image: 'https://app.wingriders.com/favicon.svg' },
+  cswap: { name: 'CSWAP', shortName: 'CS', image: 'https://cswap.trade/assets/icons/dex/common/logo-tron.svg' },
+  muesliswap: { name: 'MuesliSwap', shortName: 'MU', image: 'https://muesliswap.com/favicon.ico' },
+};
+
+function ActivePoolLogos({ pools }: { pools: ActiveMarketPool[] }) {
+  if (pools.length === 0) return <span className="text-slate-600">—</span>;
+
+  return (
+    <div className="flex min-w-[112px] flex-wrap items-center gap-x-2 gap-y-2 py-1" aria-label={`${pools.length} aktive Preis-Pools`}>
+      {pools.map((pool) => {
+        const logo = DEX_POOL_LOGOS[pool.dex.toLowerCase()];
+        return (
+          <PoolSourceLogo
+            key={pool.poolId}
+            pool={pool}
+            name={logo?.name ?? pool.dex}
+            shortName={logo?.shortName ?? pool.dex.slice(0, 2).toUpperCase()}
+            image={logo?.image}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PoolSourceLogo({
+  pool,
+  name,
+  shortName,
+  image,
+}: {
+  pool: ActiveMarketPool;
+  name: string;
+  shortName: string;
+  image?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const version = pool.version.toUpperCase();
+  const title = `${name} ${version} · ${pool.poolId}`;
+
+  return (
+    <span
+      className="relative mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-[#09122d] bg-slate-800 text-[8px] font-bold text-slate-200"
+      title={title}
+      aria-label={title}
+    >
+      <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded bg-cyan-300/15 px-1 text-[7px] font-bold leading-3 text-cyan-200">
+        {version}
+      </span>
+      {image && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element -- small official DEX logos, not token media
+        <img src={image} alt="" width={20} height={20} loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+      ) : shortName}
+    </span>
+  );
+}
 
 function ChangeCell({ value }: { value: number }) {
   return (

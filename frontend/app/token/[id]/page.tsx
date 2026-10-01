@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   Activity,
   ArrowLeft,
   BarChart3,
-  ChevronRight,
   CircleAlert,
   Coins,
   Layers3,
@@ -17,16 +16,16 @@ import {
 } from 'lucide-react';
 import TokenChart from '../../components/TokenChart';
 import TokenLogo from '../../components/TokenLogo';
-import TradePanel from '../../components/TradePanel';
-import { WalletProvider } from '../../components/WalletProvider';
+import { useCurrency } from '../../components/CurrencyProvider';
 import { API_URL } from '../../lib/api';
 import {
   MarketToken,
   formatChange,
   formatCompactNumber,
-  formatCompactUsd,
+  formatMarketValue,
   formatDate,
-  formatUsd,
+  formatTokenPrice,
+  formatUsdInCurrency,
 } from '../../lib/tokens';
 
 interface TokenApiResponse {
@@ -39,13 +38,14 @@ interface TokenApiResponse {
 }
 
 export default function TokenExplorerPage() {
+  const { currency } = useCurrency();
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const tokenId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [token, setToken] = useState<MarketToken | null>(null);
   const [adaPriceUsd, setAdaPriceUsd] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tradeOpen, setTradeOpen] = useState(false);
 
   useEffect(() => {
     if (!tokenId) return;
@@ -62,7 +62,19 @@ export default function TokenExplorerPage() {
         setToken(data.token);
         setAdaPriceUsd(data.adaPriceUsd);
       })
-      .catch((requestError: Error) => setError(requestError.message))
+      .catch(async (requestError: Error) => {
+        try {
+          const response = await fetch(`${API_URL}/api/market/catalog`);
+          if (!response.ok) throw requestError;
+          const json = await response.json();
+          const localToken: MarketToken | undefined = json.data?.tokens?.find((entry: MarketToken) => entry.id === tokenId);
+          if (!json.success || !localToken) throw requestError;
+          setToken(localToken);
+          setAdaPriceUsd(json.data.adaPriceUsd);
+        } catch {
+          setError(requestError.message);
+        }
+      })
       .finally(() => setLoading(false));
   }, [tokenId]);
 
@@ -102,7 +114,7 @@ export default function TokenExplorerPage() {
           <CircleAlert className="mx-auto h-7 w-7 text-red-400" />
           <h1 className="mt-3 text-lg font-bold text-white">Token nicht verfügbar</h1>
           <p className="mt-2 text-sm text-slate-400">{error ?? 'Dieser Token ist nicht in den CARDYX Top 50 gelistet.'}</p>
-          <Link href="/" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-400 hover:text-blue-300">
+          <Link href="/market" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-400 hover:text-blue-300">
             <ArrowLeft className="h-4 w-4" /> Zur Übersicht
           </Link>
         </div>
@@ -117,11 +129,10 @@ export default function TokenExplorerPage() {
       : null;
 
   return (
-    <WalletProvider>
     <main className="min-h-screen bg-[#05070d] text-slate-200">
       <header className="border-b border-white/5 bg-[#05070d]/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 text-sm font-semibold text-slate-400 transition-colors hover:text-white">
+          <Link href="/market" className="flex items-center gap-2 text-sm font-semibold text-slate-400 transition-colors hover:text-white">
             <ArrowLeft className="h-4 w-4" />
             Dashboard
           </Link>
@@ -155,14 +166,14 @@ export default function TokenExplorerPage() {
             <div className="flex flex-wrap items-end gap-x-5 gap-y-2 lg:justify-end">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Aktueller Preis</p>
-                <p className="mt-1 text-3xl font-extrabold text-white">{formatUsd(token.priceUsd)}</p>
+                <p className="mt-1 text-3xl font-extrabold text-white">{formatTokenPrice(token.priceAda, token.priceUsd, currency)}</p>
               </div>
               <div className={`mb-1 text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
                 {formatChange(token.change24h)} <span className="text-xs font-medium text-slate-500">24h</span>
               </div>
               <button
                 type="button"
-                onClick={() => setTradeOpen(true)}
+                onClick={() => router.push(`/trade?token=${encodeURIComponent(token.id)}`)}
                 className="mb-1 flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition-colors hover:from-blue-500 hover:to-cyan-400"
               >
                 <Zap className="h-4 w-4" />
@@ -175,20 +186,20 @@ export default function TokenExplorerPage() {
         <div className="mt-7 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="min-w-0 space-y-6">
             <Panel title="Historische Preisentwicklung" icon={BarChart3}>
-              <TokenChart tokenId={token.id} ticker={token.ticker} />
+              <TokenChart tokenId={token.id} ticker={token.ticker} adaPriceUsd={adaPriceUsd} />
             </Panel>
 
             <Panel title="Marktdaten" icon={Activity}>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3">
-                <Stat label="Marktkapitalisierung" value={formatCompactUsd(token.marketCapUsd)} />
-                <Stat label="24h-Volumen" value={formatCompactUsd(token.volume24hUsd)} />
-                <Stat label="FDV" value={formatCompactUsd(token.fdvUsd)} />
-                <Stat label="24h-Tief" value={formatUsd(token.low24hUsd)} />
-                <Stat label="24h-Hoch" value={formatUsd(token.high24hUsd)} />
+                <Stat label="Marktkapitalisierung" value={formatMarketValue(token.marketCapAda, token.marketCapUsd, currency)} />
+                <Stat label="24h-Volumen" value={formatMarketValue(token.volume24hAda, token.volume24hUsd, currency)} />
+                <Stat label="FDV" value={formatMarketValue(token.fdvAda, token.fdvUsd, currency)} />
+                <Stat label="24h-Tief" value={formatUsdInCurrency(token.low24hUsd, adaPriceUsd, currency)} />
+                <Stat label="24h-Hoch" value={formatUsdInCurrency(token.high24hUsd, adaPriceUsd, currency)} />
                 <Stat label="7 Tage" value={formatChange(token.change7d)} tone={token.change7d >= 0 ? 'positive' : 'negative'} />
-                <Stat label="Allzeithoch" value={formatUsd(token.athUsd)} sub={formatDate(token.athDate)} />
+                <Stat label="Allzeithoch" value={formatUsdInCurrency(token.athUsd, adaPriceUsd, currency)} sub={formatDate(token.athDate)} />
                 <Stat label="ATH-Abstand" value={formatChange(token.athChangePct)} tone={token.athChangePct >= 0 ? 'positive' : 'negative'} />
-                <Stat label="Allzeittief" value={formatUsd(token.atlUsd)} sub={formatDate(token.atlDate)} />
+                <Stat label="Allzeittief" value={formatUsdInCurrency(token.atlUsd, adaPriceUsd, currency)} sub={formatDate(token.atlDate)} />
               </dl>
             </Panel>
 
@@ -216,9 +227,17 @@ export default function TokenExplorerPage() {
             <Panel title="Asset-Identität" icon={Layers3} compact>
               <IdentityRow label="Token" value={token.name} />
               <IdentityRow label="Ticker" value={token.ticker} />
-              <IdentityRow label="CoinGecko-ID" value={token.id} />
-              <IdentityRow label="Policy ID" value={token.policyId ?? 'Wird mit dem Cardano Data Layer indexiert'} mono />
-                <IdentityRow label="Asset Name" value={token.assetName ?? 'Noch nicht im Asset-Katalog zugeordnet'} mono />
+              {token.description && <IdentityRow label="Beschreibung" value={token.description} />}
+              {token.protocol && <IdentityRow label="Protokoll" value={token.protocol} />}
+              {token.category && <IdentityRow label="Kategorie" value={token.category} />}
+              <IdentityRow label="Katalogstatus" value={token.catalogVerified ? 'Verifiziert' : 'Nicht verifiziert'} />
+              <IdentityRow label="Datenquelle" value={token.marketDataSource === 'minswap' ? 'Minswap API (Marktstatistiken)' : token.source === 'cardyx-local' ? 'CARDYX Local Market Feed' : token.source ?? 'CARDYX Local Market Feed'} />
+              <IdentityRow label="Preisstatus" value={token.pricing === 'local-price-index' ? 'Lokaler Preisindex aktiv' : token.pricing === 'minswap-api' ? 'Minswap API' : 'Noch kein lokaler Preisindex'} />
+              <IdentityRow label="CARDYX Market-ID" value={token.id} />
+              <IdentityRow label="Policy ID" value={token.policyId ?? 'Noch nicht im Asset-Katalog zugeordnet'} mono />
+              <IdentityRow label="Asset Name" value={token.assetName ?? 'Noch nicht im Asset-Katalog zugeordnet'} mono />
+              <IdentityRow label="Fingerprint" value={token.fingerprint ?? 'Wird aus db-sync indexiert'} mono />
+              <IdentityRow label="Decimals" value={token.decimals == null ? 'Noch nicht indexiert' : String(token.decimals)} />
             </Panel>
 
             <OnChainPanel token={token} />
@@ -237,19 +256,7 @@ export default function TokenExplorerPage() {
           </aside>
         </div>
       </div>
-      {tradeOpen && (
-        <div className="fixed right-4 top-24 z-[90] w-[340px] sm:right-6">
-          <TradePanel
-            tokens={[token]}
-            adaPriceUsd={adaPriceUsd}
-            selectedToken={token}
-            onSelectToken={setToken}
-            onClose={() => setTradeOpen(false)}
-          />
-        </div>
-      )}
     </main>
-    </WalletProvider>
   );
 }
 
@@ -267,10 +274,10 @@ function OnChainPanel({ token }: { token: MarketToken }) {
         <IdentityRow label="Holder" value={hasSnapshot ? formatCompactNumber(token.holderCount ?? 0) : 'Noch nicht indexiert'} />
         <IdentityRow label="Aktive UTxOs" value={hasSnapshot ? formatCompactNumber(token.utxoCount ?? 0) : 'Noch nicht indexiert'} />
         <IdentityRow label="Umlaufmenge On-Chain" value={hasSnapshot ? formatCompactNumber(token.circulatingQuantity ?? 0) : 'Noch nicht indexiert'} />
-        <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs text-slate-500">
-          <span>DEX-Liquidität und Trading-Historie</span>
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-600">DEX-Index folgt <ChevronRight className="h-3 w-3" /></span>
-        </div>
+        <IdentityRow label="Letzte Aktivität" value={token.latestActivity ? formatDate(token.latestActivity) : 'Noch nicht indexiert'} />
+        <IdentityRow label="Aktive DEX-Pools" value={token.activePools?.length
+          ? token.activePools.map((source) => `${source.dex} ${source.version}`).join(', ')
+          : 'Keine aktiven Pools indexiert'} />
       </div>
     </Panel>
   );

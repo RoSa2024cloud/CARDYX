@@ -1,0 +1,88 @@
+CARDYX - DEX-Pool-Adapter ausser Splash
+======================================
+
+Zweck
+-----
+src/dex-adapters.ts dekodiert registrierte Pool-UTxOs aus lokalen
+db-sync-Daten. Jeder Adapter wird ueber das Paar dex/version in
+cardyx.dex_pool_registry ausgewaehlt. Unbekannte Versionen oder
+ungueltige Poolzustaende werden nicht als neue Preisbeobachtung
+verarbeitet. Splash Fee-Switch ist separat in SPLASH_POOL_ADAPTER.txt
+beschrieben.
+
+Unterstuetzte Pooltypen
+-----------------------
+Minswap V1 (minswap/v1)
+  Verlangt die bekannte V1-Pool-NFT-Policy und genau einen Minswap-
+  Factory-Marker im UTxO. Das Datum muss dieselben Asset-IDs wie die
+  Registrierung und eine positive Liquiditaet enthalten. Beide
+  Reserven stammen aus dem UTxO und muessen positiv sein.
+
+Minswap V2 (minswap/v2)
+  Prueft ein positives Pool-Identitaetsasset und genau einen MSP-
+  Marker. Das Datum muss mindestens acht Felder enthalten: Die
+  Asset-IDs, Gesamtliquiditaet und Datum-Reserven werden geprueft.
+  Datum-Reserven muessen positiv sein und duerfen die entsprechenden
+  UTxO-Mengen nicht uebersteigen. Fuer den Preis werden die
+  UTxO-Mengen verwendet, weil darin auch aktuelle Order-/Batcher-
+  Deltas enthalten sein koennen. Der Indexer kann V2-Kandidaten
+  entdecken; fuer den Preis braucht er weiterhin Katalogidentitaet
+  und gueltige Dezimalstellen.
+
+WingRiders V1 und V2 (wingriders/v1, wingriders/v2)
+  Verlangen das registrierte Pool-NFT in positiver Menge. V1 liest die
+  Token-Identitaet aus einem verschachtelten Datumfeld, V2 aus den
+  Datumfeldern 3 und 4. Diese Identitaet muss zum registrierten
+  Asset B passen. Die beiden positiven Reserven stammen aus dem UTxO;
+  der Decoder ermittelt hier keine Liquiditaetszahl aus dem Datum.
+
+SundaeSwap V1 (sundaeswap/v1)
+  Verlangt genau ein Pool-NFT. Sein Asset-Name muss aus dem Praefix
+  7020 und der Pool-ID bestehen. Das Datum muss dieselbe Pool-ID,
+  passende Asset-IDs und positive Liquiditaet enthalten. Die
+  Reserven stammen aus dem UTxO.
+
+SundaeSwap V3 (sundaeswap/v3)
+  Verlangt genau ein Pool-NFT. Die Pool-ID im Datum muss dem
+  registrierten NFT-Asset-Namen nach dessen achtstelligen Hex-Praefix
+  entsprechen. Die Asset-Liste im Datum muss zur Registrierung
+  passen; die Liquiditaet und beide UTxO-Reserven muessen positiv sein.
+
+MuesliSwap AMM (muesliswap/amm)
+  Verlangt genau ein Pool-NFT, passende Asset-IDs in den ersten
+  beiden Datumfeldern, positive Liquiditaet im dritten Feld und
+  positive UTxO-Reserven fuer beide Assets.
+
+CSwap V1 (cswap/v1)
+  Verlangt genau einen Poolmarker mit Asset-Name 63. Das Datum muss
+  positive Liquiditaet sowie die registrierte Token-Policy und den
+  Token-Asset-Namen enthalten. NFT-Policy und Pool-Identitaet im
+  Datum muessen zur Registrierung und zum Pool-ID-Suffix passen.
+  Beide Reserven stammen aus dem UTxO und muessen positiv sein.
+
+Gemeinsame Preis- und Betriebsregeln
+-----------------------------------
+- Pool-NFT, Pool-Adresse, Asset-IDs und Dezimalstellen werden in
+  cardyx.dex_pool_registry je Pool festgelegt. Der Indexer kann
+  gueltige neue Ausgaenge anhand der Pool-NFT nachfuehren.
+- calculateAdaTokenPrice liefert nur fuer ADA/Token-Paare einen
+  ADA-Preis: ADA wird durch 1 Million Lovelace geteilt, die
+  Tokenreserve durch 10 hoch Token-Dezimalstellen.
+- Der Indexer schreibt nur bei mindestens 500 ADA Reserve und einer
+  passenden Tokenidentitaet in cardyx.asset_catalog eine neue
+  Preisbeobachtung. Token/Token-Paare liefern keinen ADA-Preis.
+- Logos und lesbare Token-Metadaten kommen nicht aus den Pool-
+  Adaptern, sondern aus dem separaten Asset-Katalog und den
+  Asset-Metadaten.
+- Ein Pool wird nicht allein wegen eines bekannten DEX-Namens
+  vertraut: Pool-NFT, Datum, aktuelle UTxO-Reserven und die
+  Registrierungsdaten muessen gemeinsam passen.
+
+Fuer neue Pools
+--------------
+Zuerst das aktuelle unspent Pool-UTxO, die Pool-Identitaet und das
+Datum in db-sync pruefen. Danach die Token-Policy, den Asset-Namen
+und die Dezimalstellen abgleichen und den Pool nach dem passenden
+Adapterformat registrieren. Bei neuen DEX-Versionen oder einem
+anderen Datumformat ist vor einer Preisfreigabe ein eigener
+validierter Adapter erforderlich.

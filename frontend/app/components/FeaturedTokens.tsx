@@ -1,7 +1,9 @@
 'use client';
 
 import TokenLogo from './TokenLogo';
-import { MarketToken, formatAdaPrice, formatChange, formatCompactAda } from '../lib/tokens';
+import { useLanguage } from './LanguageProvider';
+import { MarketToken, formatChange, formatMarketValue, formatTokenPrice } from '../lib/tokens';
+import { useCurrency } from './CurrencyProvider';
 
 interface FeaturedTokensProps {
   tokens: MarketToken[];
@@ -14,6 +16,8 @@ interface FeaturedTokensProps {
  * Die Liste wird verdoppelt gerendert, damit der Loop nahtlos wirkt.
  */
 export default function FeaturedTokens({ tokens, onSelectToken }: FeaturedTokensProps) {
+  const { language } = useLanguage();
+  const { currency } = useCurrency();
   if (tokens.length === 0) return null;
 
   const marqueeTokens = [...tokens, ...tokens];
@@ -21,7 +25,7 @@ export default function FeaturedTokens({ tokens, onSelectToken }: FeaturedTokens
   return (
     <section aria-label="Featured Tokens">
       <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
-        Featured
+        {language === 'de' ? 'Empfohlen' : 'Featured'}
       </h2>
 
       <div className="group relative -mx-4 overflow-hidden sm:-mx-6">
@@ -47,7 +51,7 @@ export default function FeaturedTokens({ tokens, onSelectToken }: FeaturedTokens
                 </div>
               </div>
               <div className="mt-3 flex items-baseline justify-between">
-                <span className="text-sm font-bold text-slate-100">{formatAdaPrice(token.priceAda)}</span>
+                <span className="text-sm font-bold text-slate-100">{formatTokenPrice(token.priceAda, token.priceUsd, currency)}</span>
                 <span
                   className={`text-xs font-semibold ${
                     token.change24h > 0
@@ -61,7 +65,7 @@ export default function FeaturedTokens({ tokens, onSelectToken }: FeaturedTokens
                 </span>
               </div>
               <p className="mt-2 border-t border-white/5 pt-2 text-[10px] text-slate-500">
-                MC {formatCompactAda(token.marketCapAda)}&nbsp;&nbsp;Vol {formatCompactAda(token.volume24hAda)}
+                MC {formatMarketValue(token.marketCapAda, token.marketCapUsd, currency)}&nbsp;&nbsp;Vol {formatMarketValue(token.volume24hAda, token.volume24hUsd, currency)}
               </p>
             </button>
           ))}

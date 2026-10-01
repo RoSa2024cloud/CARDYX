@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
-import { ChartCandle, formatUsd } from '../lib/tokens';
-
-type Range = '7' | '30';
+import { ChartCandle, formatTokenPrice } from '../lib/tokens';
+import { useCurrency } from './CurrencyProvider';
 
 interface TokenChartProps {
   tokenId: string;
   ticker: string;
+  adaPriceUsd: number | null;
 }
 
 const W = 720;
@@ -19,8 +19,8 @@ const PAD = { top: 16, right: 12, bottom: 24, left: 12 };
  * Live-Chart eines Tokens: OHLC-Kerzen von der Backend-Route
  * /api/market/chart/:id als SVG-Preisverlauf mit Hover-Crosshair.
  */
-export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
-  const [range, setRange] = useState<Range>('7');
+export default function TokenChart({ tokenId, ticker, adaPriceUsd }: TokenChartProps) {
+  const { currency } = useCurrency();
   const [candles, setCandles] = useState<ChartCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -35,7 +35,7 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
         setLoading(true);
         setError(false);
       }
-      fetch(`${API_URL}/api/market/chart/${encodeURIComponent(tokenId)}?days=${range}`)
+      fetch(`${API_URL}/api/market/chart/${encodeURIComponent(tokenId)}?days=7`)
         .then((res) => {
           if (!res.ok) throw new Error('Fehler');
           return res.json();
@@ -62,7 +62,7 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenId, range]);
+  }, [tokenId]);
 
   const closes = candles.map((c) => c.close);
   const min = Math.min(...closes);
@@ -93,6 +93,7 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
   };
 
   const hovered = hover !== null ? candles[hover] : null;
+  const formatCandle = (priceAda: number) => formatTokenPrice(priceAda, priceAda * (adaPriceUsd ?? 0), currency);
 
   return (
     <div>
@@ -100,27 +101,13 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="text-xl font-bold text-white">
-            {hovered ? formatUsd(hovered.close) : closes.length ? formatUsd(closes[closes.length - 1]) : '—'}
+            {hovered ? formatCandle(hovered.close) : closes.length ? formatCandle(closes[closes.length - 1]) : '—'}
           </p>
           <p className="text-[11px] text-slate-500">
             {hovered
               ? new Date(hovered.time).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-              : `${range} Tage · ${candles.length} Datenpunkte`}
+              : `7 Tage · ${candles.length} Datenpunkte`}
           </p>
-        </div>
-        <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5">
-          {(['7', '30'] as Range[]).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRange(r)}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                range === r ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {r}T
-            </button>
-          ))}
         </div>
       </div>
 
@@ -135,6 +122,9 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
           <div className="flex h-[240px] items-center justify-center text-sm text-red-400">
             Chartdaten aktuell nicht verfügbar.
           </div>
+        )}
+        {!loading && !error && candles.length === 0 && (
+          <div className="flex h-[240px] items-center justify-center text-sm text-slate-500">Keine lokale Preishistorie verfügbar.</div>
         )}
         {!loading && !error && candles.length > 0 && (
           <svg
@@ -184,10 +174,10 @@ export default function TokenChart({ tokenId, ticker }: TokenChartProps) {
 
             {/* Min/Max-Beschriftung */}
             <text x={PAD.left} y={PAD.top - 5} className="fill-slate-500" fontSize="10">
-              Hoch {formatUsd(max)}
+              Hoch {formatCandle(max)}
             </text>
             <text x={PAD.left} y={H - 6} className="fill-slate-500" fontSize="10">
-              Tief {formatUsd(min)}
+              Tief {formatCandle(min)}
             </text>
           </svg>
         )}

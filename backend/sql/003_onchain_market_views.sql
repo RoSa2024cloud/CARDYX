@@ -30,7 +30,7 @@ LEFT JOIN LATERAL (
 ) a ON true;
 
 UPDATE cardyx.asset_catalog
-SET policy_id = '27925e5f343eceb211bb3d7a659c6f97488f187ccbdaef01c13a0874',
+SET policy_id = '279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f',
     asset_name = '534e454b',
     updated_at = now()
 WHERE market_id = 'snek';

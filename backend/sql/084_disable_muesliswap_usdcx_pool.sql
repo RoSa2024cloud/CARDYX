@@ -1,0 +1,6 @@
+UPDATE cardyx.dex_pool_registry
+SET enabled = false, updated_at = now()
+WHERE pool_id = 'muesliswap-amm-909133088303c49f3a30f1cc8ed553a73857a29779f6c6561cd8093f-932e9a73e4d6e03cc872cfd0f13924864774c18eff87729744b348078d29a98b';
+
+DELETE FROM cardyx.dex_pool_price_observation
+WHERE pool_id = 'muesliswap-amm-909133088303c49f3a30f1cc8ed553a73857a29779f6c6561cd8093f-932e9a73e4d6e03cc872cfd0f13924864774c18eff87729744b348078d29a98b';

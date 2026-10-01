@@ -5,13 +5,15 @@ import { Bell, X, Zap } from 'lucide-react';
 import TokenLogo from './TokenLogo';
 import TokenChart from './TokenChart';
 import { buildSwapUrl } from '../lib/dexhunter';
+import { useCurrency } from './CurrencyProvider';
 import {
   MarketToken,
   formatChange,
   formatCompactNumber,
-  formatCompactUsd,
+  formatMarketValue,
   formatDate,
-  formatUsd,
+  formatTokenPrice,
+  formatUsdInCurrency,
 } from '../lib/tokens';
 
 interface TokenDetailModalProps {
@@ -27,6 +29,7 @@ interface TokenDetailModalProps {
  * 24h-Kursspanne und Live-Chart. Öffnet sich beim Klick auf einen Token.
  */
 export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade }: TokenDetailModalProps) {
+  const { currency } = useCurrency();
   // Escape schließt das Fenster, Scrollen im Hintergrund wird gesperrt
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -98,14 +101,18 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
         </div>
 
         <div className="space-y-6 px-6 py-5">
+          {token.description && (
+            <p className="text-sm leading-6 text-slate-400">{token.description}</p>
+          )}
+
           {/* Preis-Zeile */}
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="text-3xl font-extrabold text-white">{formatUsd(token.priceUsd)}</span>
+            <span className="text-3xl font-extrabold text-white">{formatTokenPrice(token.priceAda, token.priceUsd, currency)}</span>
             <span className={`text-sm font-bold ${changePositive ? 'text-green-400' : 'text-red-400'}`}>
               {formatChange(token.change24h)} (24h)
             </span>
             {adaPriceUsd && (
-              <span className="text-sm text-slate-400">≈ ₳{token.priceAda.toFixed(6)}</span>
+              <span className="text-sm text-slate-400">≈ {formatTokenPrice(token.priceAda, token.priceUsd, currency === 'ADA' ? 'USD' : 'ADA')}</span>
             )}
           </div>
 
@@ -115,9 +122,9 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
               Marktdaten
             </h3>
             <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-              <Stat label="Marktkapitalisierung" value={formatCompactUsd(token.marketCapUsd)} />
+              <Stat label="Marktkapitalisierung" value={formatMarketValue(token.marketCapAda, token.marketCapUsd, currency)} />
               <Stat label="Rang" value={token.marketCapRank ? `#${token.marketCapRank}` : '—'} />
-              <Stat label="24h-Volumen" value={formatCompactUsd(token.volume24hUsd)} />
+              <Stat label="24h-Volumen" value={formatMarketValue(token.volume24hAda, token.volume24hUsd, currency)} />
               <Stat
                 label="Umlaufmenge"
                 value={`${formatCompactNumber(token.circulatingSupply)} ${token.ticker}`}
@@ -133,7 +140,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
               />
               <Stat
                 label="Allzeithoch"
-                value={formatUsd(token.athUsd)}
+                value={formatUsdInCurrency(token.athUsd, adaPriceUsd, currency)}
                 valueClass="text-white"
                 badge={formatChange(token.athChangePct)}
                 badgePositive={token.athChangePct >= 0}
@@ -141,7 +148,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
               />
               <Stat
                 label="Allzeittief"
-                value={formatUsd(token.atlUsd)}
+                value={formatUsdInCurrency(token.atlUsd, adaPriceUsd, currency)}
                 valueClass="text-white"
                 badge={formatChange(token.atlChangePct)}
                 badgePositive={token.atlChangePct >= 0}
@@ -163,7 +170,7 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
                 className="absolute -translate-x-1/2 whitespace-nowrap text-xs font-bold text-white"
                 style={{ left: `${rangePosition}%` }}
               >
-                Now {formatUsd(token.priceUsd)}
+                Now {formatTokenPrice(token.priceAda, token.priceUsd, currency)}
               </span>
             </div>
             <div className="relative">
@@ -175,16 +182,16 @@ export default function TokenDetailModal({ token, adaPriceUsd, onClose, onTrade 
             </div>
             <div className="mt-2 flex justify-between text-xs">
               <span className="text-slate-400">
-                Tief <span className="font-semibold text-slate-200">{formatUsd(token.low24hUsd)}</span>
+                Tief <span className="font-semibold text-slate-200">{formatUsdInCurrency(token.low24hUsd, adaPriceUsd, currency)}</span>
               </span>
               <span className="text-slate-400">
-                Hoch <span className="font-semibold text-slate-200">{formatUsd(token.high24hUsd)}</span>
+                Hoch <span className="font-semibold text-slate-200">{formatUsdInCurrency(token.high24hUsd, adaPriceUsd, currency)}</span>
               </span>
             </div>
           </div>
 
           {/* Live-Chart */}
-          <TokenChart tokenId={token.id} ticker={token.ticker} />
+          <TokenChart tokenId={token.id} ticker={token.ticker} adaPriceUsd={adaPriceUsd} />
 
           {/* Aktionen */}
           <div className="flex gap-3 pb-1">

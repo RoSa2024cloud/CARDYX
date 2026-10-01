@@ -1,0 +1,90 @@
+CARDYX - Splash-Pool-Adapter
+============================
+
+Zweck
+-----
+Die Adapter in src/dex-adapters.ts verarbeiten registrierte Splash-Pools
+aus lokalen db-sync-Daten. Unterstuetzt sind derzeit Fee-Switch V1 mit
+Registry-Kennung dex=splash, version=fee-switch, sowie Royalty V1 mit
+dex=splash, version=royalty-v1. Jede Variante ist fuer weitere Pools
+mit demselben Datumformat wiederverwendbar. Andere Splash-Pooltypen sind
+damit nicht automatisch unterstuetzt.
+
+Pruefung eines Pool-UTxO
+----------------------
+- Das registrierte Pool-NFT muss genau einmal im UTxO liegen und mit
+  Feld 0 des Datums uebereinstimmen.
+- Die Assets in Datumfeldern 1 und 2 muessen in derselben Reihenfolge
+  mit den beiden registrierten Pool-Assets uebereinstimmen.
+- Das LP-Asset aus Datumfeld 3 muss in positiver Menge im UTxO liegen.
+- Feld 4 enthaelt den Pool-Fee-Zaehler (1 bis 100000). Feld 5 enthaelt
+  den Treasury-Fee-Zaehler (0 bis Pool-Fee-Zaehler).
+- Felder 6 und 7 enthalten die angesammelten Treasury-Mengen fuer
+  Asset A beziehungsweise Asset B. Sie duerfen nicht negativ sein
+  oder die jeweilige Menge im UTxO erreichen oder uebersteigen.
+- Bei ungueltigem Datum oder fehlenden Assets liefert der Adapter
+  keinen Poolzustand; der Indexer erzeugt dann keinen neuen Preis.
+
+Reserven und Preis
+-----------------
+Die handelbare Reserve jedes Assets ist seine UTxO-Menge abzueglich
+seiner Treasury-Menge aus dem Datum. Diese Unterscheidung ist wichtig:
+Der volle UTxO-Bestand ist nicht die handelbare Reserve.
+
+Die gemeinsame Preisfunktion calculateAdaTokenPrice berechnet nur fuer
+ADA/Token-Paare einen ADA-Preis. Sie normiert Lovelace mit 6 ADA-
+Dezimalstellen und die Tokenmenge mit den hinterlegten Token-
+Dezimalstellen. Der Indexer verlangt mindestens 500 ADA handelbare
+Reserve und einen passenden Eintrag in cardyx.asset_catalog. Pools
+gegen andere Tokens erzeugen damit keinen ADA/Token-Preis.
+
+Registrierung und Aktualisierung
+-------------------------------
+Der Adapter entdeckt oder registriert keine Pools selbst. Jeder Pool
+braucht einen validierten Eintrag in cardyx.dex_pool_registry mit
+Pool-NFT, Pool-Adresse, Asset-IDs, Dezimalstellen und aktivem UTxO.
+sql/103_register_splash_splash_ada_fee_switch.sql enthaelt die
+Registrierung fuer den ersten SPLASH/ADA-Pool. Der DEX-Indexer kann
+den registrierten Ausgang bei Poolbewegungen nachfuehren. Weitere
+Splash-Pools erfordern jeweils eine eigene On-Chain-Pruefung und eine
+passende Registrierung; der Adapter muss fuer identische Fee-Switch-
+Daten nicht erneut angepasst werden.
+
+Der Token-Katalog und das Logo werden getrennt vom Pool-Adapter
+verwaltet. SPLASH hat laut Cardano Token Registry 6 Dezimalstellen;
+das dortige PNG liegt in den ueblichen CARDYX-Bildfeldern.
+
+Royalty V1
+----------
+Das Royalty-V1-Datum hat mindestens 15 Felder. Auf Pool-NFT und Assets
+folgen LP-Asset, LP-/Treasury-/Royalty-Fee-Zaehler, Treasury-Mengen,
+Royalty-Mengen, Admin-/Adressdaten und Nonce. Der Adapter prueft die
+Asset-IDs und das LP-Asset. Fuer den handelbaren Bestand zieht er sowohl
+Treasury- als auch Royalty-Mengen von den UTxO-Reserven ab. Fee-Summen
+ueber der LP-Fee, negative oder uebergrosse Ausschlussmengen sowie
+fehlende Admin-/Adressdaten werden abgelehnt.
+
+SONGMARKETCAP / SONG
+--------------------
+Der SONG-Pool identifiziert sein Token on-chain als SONGMARKETCAP
+(Policy f71b... und Asset-Name 534f4e474d41524b4554434150). Die Cardano
+Token Registry hat fuer diese Einheit keinen Datensatz. Die lokale
+Zuordnung zum Markt SONG verwendet daher die Angaben von
+songmarketcap.com. Die dort veroeffentlichte SONG-Spotpreisangabe
+stimmt mit dem ADA-/SONGMARKETCAP-Reservequotienten bei 0 Dezimalstellen
+ueberein. Diese Skalierung ist projektspezifisch und darf nicht aus
+dem Ticker allein abgeleitet werden.
+
+Pruefen
+-------
+Im Backend-Verzeichnis:
+
+  node --import tsx --test src/dex-adapters.test.ts
+  .\node_modules\.bin\tsc.cmd --noEmit
+
+Die Tests decken das reale SPLASH/ADA-Datum samt Treasury-Abzug sowie
+falsches Pool-NFT, falsches Token-Asset und ueberhoehte Treasury-Mengen
+ab. Im laufenden System muessen Pool-UTxO, beobachtete Reserven und
+reserve_ada / reserve_asset mit dem gespeicherten price_ada
+uebereinstimmen. Ein neuer Adapter wird erst nach einem API-Neubau im
+Produktionscontainer verwendet.
