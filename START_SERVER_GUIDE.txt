@@ -34,26 +34,6 @@ Wichtig:
 
 Auf dem Windows-Entwicklungsrechner in PowerShell:
 
-Windows-SSH-Agent aktivieren um einmalig die PowerShell als 
-Administrator auszuführen:
-
-Set-Service -Name ssh-agent -StartupType Automatic
-Start-Service ssh-agent
-
-Danach in einem normalen PowerShell oder VS-Code-Terminal:
-
-ssh-add "$HOME\.ssh\cardyx_ed25519"
-
-Die Passphrase muss du dabei einmal eingeben. Prüfen kannst du den
-geladenen Schlüssel mit:
-
-ssh-add -l
-
-Ab dann sollte sie bis zum nächsten Windows Neustart nicht mehr
-nötigt sein.
-
-Auf dem Windows-Entwicklungsrechner in PowerShell:
-
   ssh -i "$HOME\.ssh\cardyx_ed25519" cardyx@192.168.178.95
 
 Die IP kann sich nach einem Router- oder Server-Neustart aendern.
@@ -189,8 +169,6 @@ Verfuegbare Explorer-Endpunkte:
       Cardano Mainnet-Adresse (addr1...)
     GET /api/market/onchain
       Katalog, Holder, UTxO und On-Chain-Mengen ohne CoinGecko
-    POST /api/market/dex/pools/observations
-      Eigene DEX-Pool-Beobachtungen in den lokalen Preisindex schreiben
 
 Die Endpunkte liefern ausschliesslich verifizierte On-Chain-Daten aus den
 freigegebenen CARDYX-Views. Fiat-Preise, Logos und lesbare Token-Metadaten
@@ -199,40 +177,6 @@ sind nicht Teil dieser Datenschicht.
 Der On-Chain-Marktfeed ist bereits unabhaengig von CoinGecko. Preise, ADA/USD-
 Umrechnung, DEX-Volumen und historische Charts werden erst nach Aufbau des
 eigenen DEX-Preisindex als CARDYX-Datenquelle verfuegbar.
-
-Der lokale Preisindex nimmt Pool-Beobachtungen aus einem eigenen Indexer an.
-DexHunter ist dafuer nicht erforderlich und bleibt auf den Trade-Pfad begrenzt.
-Beispiel fuer einen Import aus einem internen Indexer (keine Secrets mitsenden):
-
-  curl --fail --silent --request POST http://127.0.0.1:4000/api/market/dex/pools/observations \
-    --header 'Content-Type: application/json' \
-    --data '{"observations":[{"pool_id":"minswap-pool-1","market_id":"snek","policy_id":"27925e5f343eceb211bb3d7a659c6f97488f187ccbdaef01c13a0874","asset_name":"534e454b","reserve_ada":1000000,"reserve_asset":450000000,"price_ada":0.00222,"observed_at":"2026-09-25T12:00:00Z"}]}'
-
-Der Import aktualisiert cardyx.dex_pool_price_observation und aggregiert die
-aktuellen Pool-Preise in cardyx.asset_price_snapshot. Den Zustand pruefen:
-
-  curl --fail --silent http://127.0.0.1:4000/api/market/dex/index/status
-
-Indexer-Fortschritt live pruefen:
-
-  watch -n 10 "curl --silent http://127.0.0.1:4000/api/indexer/local/status"
-  watch -n 10 "curl --silent http://127.0.0.1:4000/api/indexer/dex/status"
-
-Einmaligen Lauf manuell starten:
-
-  curl --fail --silent --request POST http://127.0.0.1:4000/api/indexer/local/run
-  curl --fail --silent --request POST http://127.0.0.1:4000/api/indexer/dex/run
-
-Indexer-Logs beobachten:
-
-  docker logs -f --tail 100 cardyx-api
-
-Wichtige Statusfelder:
-  local.runPhase = metadata oder balances
-  local.lastRunResult.metadata = Anzahl erkannter Metadatensaetze
-  local.lastRunResult.balances = Anzahl aktualisierter Balance-Snapshots
-  dex.lastRunResult.pools = Anzahl erkannter Pools
-  dex.lastRunResult.markets = Anzahl aktualisierter Markt-Snapshots
 
 API neu bauen oder nach einem Update starten:
 

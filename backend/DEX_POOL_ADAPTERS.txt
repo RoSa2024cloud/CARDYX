@@ -68,9 +68,10 @@ Gemeinsame Preis- und Betriebsregeln
 - calculateAdaTokenPrice liefert nur fuer ADA/Token-Paare einen
   ADA-Preis: ADA wird durch 1 Million Lovelace geteilt, die
   Tokenreserve durch 10 hoch Token-Dezimalstellen.
-- Der Indexer schreibt nur bei mindestens 500 ADA Reserve und einer
-  passenden Tokenidentitaet in cardyx.asset_catalog eine neue
-  Preisbeobachtung. Token/Token-Paare liefern keinen ADA-Preis.
+- Jeder gueltig decodierte registrierte ADA/Token-Pool wird unabhaengig
+  von seiner ADA-Reserve indexiert. Kleine Pools koennen bei der
+  Preisaggregation weiterhin durch Median-/Ausreisserfilter weniger
+  Gewicht erhalten. Token/Token-Paare liefern keinen direkten ADA-Preis.
 - Logos und lesbare Token-Metadaten kommen nicht aus den Pool-
   Adaptern, sondern aus dem separaten Asset-Katalog und den
   Asset-Metadaten.
@@ -79,10 +80,9 @@ Gemeinsame Preis- und Betriebsregeln
   Registrierungsdaten muessen gemeinsam passen.
 
 Fuer neue Pools
---------------
-Zuerst das aktuelle unspent Pool-UTxO, die Pool-Identitaet und das
-Datum in db-sync pruefen. Danach die Token-Policy, den Asset-Namen
-und die Dezimalstellen abgleichen und den Pool nach dem passenden
-Adapterformat registrieren. Bei neuen DEX-Versionen oder einem
-anderen Datumformat ist vor einer Preisfreigabe ein eigener
-validierter Adapter erforderlich.
+---------------
+Der Indexer sucht aktuelle UTxOs unter den Pool-NFT-Policies bereits
+registrierter Adapter und registriert Kandidaten nach erfolgreichem
+Decoder-Check automatisch. Neue DEX-Versionen, unbekannte Pool-NFT-
+Policies oder andere Datumformate brauchen weiterhin einen eigenen
+validierten Adapter und eine bekannte Pool-NFT-Policy.

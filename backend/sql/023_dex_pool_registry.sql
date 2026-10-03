@@ -83,58 +83,6 @@ WHERE r.enabled = true
 GRANT SELECT, INSERT, UPDATE ON cardyx.dex_pool_registry TO cardyx_api;
 GRANT SELECT ON cardyx.dex_pool_utxo TO cardyx_api;
 
-CREATE OR REPLACE FUNCTION cardyx.find_registered_pool_outputs(
-  p_pool_id text,
-  p_pool_nft_policy_id text,
-  p_pool_nft_asset_name text,
-  p_start_tx_out_id bigint,
-  p_pool_address text
-)
-RETURNS TABLE(tx_out_id bigint, lovelace numeric, datum_json jsonb, assets jsonb)
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = pg_catalog, cardyx, public
-AS $$
-  WITH recent_outputs AS MATERIALIZED (
-    SELECT mto.tx_out_id
-    FROM public.multi_asset ma
-    JOIN public.ma_tx_out mto ON mto.ident = ma.id AND mto.quantity > 0
-    WHERE ma.policy = decode(p_pool_nft_policy_id, 'hex')
-      AND ma.name = decode(p_pool_nft_asset_name, 'hex')
-      AND (p_start_tx_out_id IS NULL OR mto.tx_out_id >= p_start_tx_out_id)
-    ORDER BY mto.tx_out_id DESC
-    LIMIT 200
-  )
-  SELECT output.id,
-         output.value,
-         coalesce(inline_datum.value, hash_datum.value),
-         coalesce(assets.value, '[]'::jsonb)
-  FROM recent_outputs recent
-  JOIN public.tx_out output ON output.id = recent.tx_out_id
-  LEFT JOIN public.datum inline_datum ON inline_datum.id = output.inline_datum_id
-  LEFT JOIN public.datum hash_datum ON hash_datum.hash = output.data_hash
-  LEFT JOIN LATERAL (
-    SELECT jsonb_agg(jsonb_build_object(
-      'policy_id', encode(asset.policy, 'hex'),
-      'asset_name', encode(asset.name, 'hex'),
-      'quantity', asset_output.quantity
-    )) AS value
-    FROM public.ma_tx_out asset_output
-    JOIN public.multi_asset asset ON asset.id = asset_output.ident
-    WHERE asset_output.tx_out_id = output.id
-  ) assets ON true
-  WHERE output.consumed_by_tx_id IS NULL
-    AND (p_pool_address IS NULL OR output.address = p_pool_address)
-    AND NOT EXISTS (
-      SELECT 1 FROM public.tx_in spent
-      WHERE spent.tx_out_id = output.tx_id AND spent.tx_out_index = output.index
-    )
-  ORDER BY output.id DESC;
-$$;
-
-REVOKE ALL ON FUNCTION cardyx.find_registered_pool_outputs(text, text, text, bigint, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION cardyx.find_registered_pool_outputs(text, text, text, bigint, text) TO cardyx_api;
-
 CREATE OR REPLACE FUNCTION cardyx.refresh_snek_pool_output()
 RETURNS bigint
 LANGUAGE sql

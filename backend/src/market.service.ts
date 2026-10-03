@@ -14,10 +14,11 @@ export interface MinswapAssetMetrics {
   fdvUsd: number;
   circulatingSupply: number;
   totalSupply: number;
+  maxSupply: number | null;
   liquidityUsd: number;
 }
 
-export interface MarketToken { id: string; ticker: string; name: string; image: string | null; policyId: string | null; priceUsd: number; priceAda: number; change24h: number; change7d: number; volume24hUsd: number; marketCapUsd: number; fdvUsd: number; volume24hAda: number; marketCapAda: number; fdvAda: number; marketCapRank: number | null; circulatingSupply: number; totalSupply: number | null; maxSupply: number | null; athUsd: number; athChangePct: number; athDate: string | null; atlUsd: number; atlChangePct: number; atlDate: string | null; high24hUsd: number; low24hUsd: number; sparkline7d: number[]; }
+export interface MarketToken { id: string; ticker: string; name: string; image: string | null; policyId: string | null; assetName?: string | null; decimals?: number | null; priceUsd: number; priceAda: number; change24h: number; change7d: number; volume24hUsd: number; marketCapUsd: number; fdvUsd: number; volume24hAda: number; marketCapAda: number; fdvAda: number; marketCapRank: number | null; circulatingSupply: number; totalSupply: number | null; maxSupply: number | null; maxSupplyExact?: string | null; maxSupplySource?: 'cardyx-expired-native-policy' | 'minswap-api' | 'market-provider' | null; policyMaxSupplyRaw?: string | null; currentSupplyRaw?: string | null; athUsd: number; athChangePct: number; athDate: string | null; atlUsd: number; atlChangePct: number; atlDate: string | null; high24hUsd: number; low24hUsd: number; sparkline7d: number[]; localPoolPriceAda?: number; circulatingQuantity?: number; circulatingQuantityRaw?: string | null; onchainSupply?: number | null; onchainSupplyExact?: string | null; marketCapBasis?: 'verified-circulating-supply' | 'on-chain-supply-estimate' | null; fdvBasis?: 'maximum-supply' | 'provider-total-supply' | 'on-chain-supply' | null; supplySource?: 'minswap-api' | 'cardyx-on-chain' | null; }
 export interface MarketData { adaPriceUsd: number; adaChange24h: number; total: number; updatedAt: string; tokens: MarketToken[]; }
 export type ChartRange = '7' | '30';
 export interface ChartCandle { time: number; open: number; high: number; low: number; close: number; }
@@ -62,6 +63,7 @@ export async function getMinswapAssetMetrics(policyId: string, assetName: string
         fdvUsd: number(payload.fully_diluted),
         circulatingSupply: number(payload.circulating_supply),
         totalSupply: number(payload.total_supply),
+        maxSupply: payload.max_supply == null ? null : number(payload.max_supply),
         liquidityUsd: number(payload.liquidity),
       };
       minswapMetricsCache.set(cacheKey, { metrics, expiresAt: Date.now() + 5 * 60_000 });

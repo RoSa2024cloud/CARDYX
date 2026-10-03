@@ -8,6 +8,7 @@ import FeaturedCarousel from '../components/FeaturedCarousel';
 import FeaturedTokens from '../components/FeaturedTokens';
 import TrendingRow from '../components/TrendingRow';
 import TokenTable from '../components/TokenTable';
+import MarketSentimentIndex from '../components/MarketSentimentIndex';
 import { WalletProvider } from '../components/WalletProvider';
 import { useLanguage } from '../components/LanguageProvider';
 import { API_URL } from '../lib/api';
@@ -28,7 +29,7 @@ export default function Dashboard() {
 
   // Katalogisierte lokale Tokens abrufen (silent = Hintergrund-Update)
   const fetchMarket = (silent = false) => {
-    fetch(`${API_URL}/api/market/catalog`)
+    fetch(`${API_URL}/api/market/catalog`, { cache: 'no-store' })
       .then((res) => {
         if (!res.ok) throw new Error('Fehler beim Abruf');
         return res.json();
@@ -125,28 +126,31 @@ export default function Dashboard() {
 
         <FeaturedCarousel />
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex items-center gap-3 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-3">
-            <Database className="h-5 w-5 shrink-0 text-cyan-300" />
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-300/70">{language === 'de' ? 'Marktquelle' : 'Market source'}</p>
-              <p className="text-sm font-semibold text-cyan-50">{marketSource}</p>
+        <div className="-mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_calc((100%_-_48px)/4)]">
+          <div className="grid gap-2 lg:h-[168px] lg:grid-rows-3">
+            <div className="flex min-h-11 items-center gap-2.5 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
+              <Database className="h-4 w-4 shrink-0 text-cyan-300" />
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-cyan-300/70">{language === 'de' ? 'Marktquelle' : 'Market source'}</p>
+                <p className="truncate text-xs font-semibold text-cyan-50">{marketSource}</p>
+              </div>
+            </div>
+            <div className="flex min-h-11 items-center gap-2.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
+              <Activity className="h-4 w-4 shrink-0 text-emerald-300" />
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-300/70">{language === 'de' ? 'Preisindex' : 'Price index'}</p>
+                <p className="truncate text-xs font-semibold text-emerald-50">{priceIndexStatus}</p>
+              </div>
+            </div>
+            <div className="flex min-h-11 items-center gap-2.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
+              <Activity className="h-4 w-4 shrink-0 text-amber-300" />
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-amber-300/70">{language === 'de' ? 'Datenpipeline' : 'Data pipeline'}</p>
+                <p className="truncate text-xs font-semibold text-amber-50">{pipelineStatus}</p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-4 py-3">
-            <Activity className="h-5 w-5 shrink-0 text-emerald-300" />
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300/70">{language === 'de' ? 'Preisindex' : 'Price index'}</p>
-              <p className="text-sm font-semibold text-emerald-50">{priceIndexStatus}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 sm:col-span-2">
-            <Activity className="h-5 w-5 shrink-0 text-amber-300" />
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300/70">{language === 'de' ? 'Datenpipeline' : 'Data pipeline'}</p>
-              <p className="text-sm font-semibold text-amber-50">{pipelineStatus}</p>
-            </div>
-          </div>
+          <MarketSentimentIndex tokens={tokens} language={language} variant="market" />
         </div>
 
         <FeaturedTokens tokens={featured} onSelectToken={openToken} />

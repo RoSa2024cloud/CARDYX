@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calculateAdaTokenPrice, splashClassicAdapter, splashFeeSwitchAdapter, splashRoyaltyV1Adapter, type DexAsset, type DexPoolRegistryEntry, type DexUtxoValue } from './dex-adapters';
+import { calculateAdaTokenPrice, splashClassicAdapter, splashFeeSwitchAdapter, splashRoyaltyV1Adapter, vyfiV1Adapter, type DexAsset, type DexPoolRegistryEntry, type DexUtxoValue } from './dex-adapters';
 
 const poolNft: DexAsset = {
   policyId: 'bde0baebb269e9296c9ecdcceeb33fe464361d099b89698470d6b804',
@@ -124,7 +124,7 @@ test('Splash classic pool rejects an unregistered datum asset', () => {
   assert.equal(splashClassicAdapter.decodePool(sundaeClassicEntry, sundaeClassicUtxo(poolNft)), null);
 });
 
-test('Splash fee-switch decodes the rsERG ADA pool with nine token decimals', () => {
+test('Splash fee-switch decodes an rsERG ADA pool below 500 ADA with nine token decimals', () => {
   const poolId = 'splash-fee-switch-5cb6e093f8a900f82ad299c807511b9faf2273adbac58cf4a35a4c99-72734552475f4144415f4e4654';
   const poolNftAsset = {
     policyId: '5cb6e093f8a900f82ad299c807511b9faf2273adbac58cf4a35a4c99',
@@ -152,7 +152,7 @@ test('Splash fee-switch decodes the rsERG ADA pool with nine token decimals', ()
     enabled: true,
   };
   const utxo: DexUtxoValue = {
-    lovelace: 464090172860n,
+    lovelace: 464090172n,
     assets: new Map([
       [`${poolNftAsset.policyId}:${poolNftAsset.assetName}`, 1n],
       [`${rsErg.policyId}:${rsErg.assetName}`, 331902798710558n],
@@ -162,7 +162,7 @@ test('Splash fee-switch decodes the rsERG ADA pool with nine token decimals', ()
       constructor: 0,
       fields: [
         datumAsset(poolNftAsset), datumAsset(poolEntry.assetA), datumAsset(rsErg), datumAsset(lpAsset),
-        { int: 99100 }, { int: 90 }, { int: 13158988375 }, { int: 8888365616949 },
+        { int: 99100 }, { int: 90 }, { int: 1000000 }, { int: 8888365616949 },
         { list: [] }, { int: 0 }, { bytes: '75c4570eb625ae881b32a34c52b159f6f3f3f2c7aaabf5bac4688133' },
       ],
     },
@@ -170,9 +170,11 @@ test('Splash fee-switch decodes the rsERG ADA pool with nine token decimals', ()
 
   const decoded = splashFeeSwitchAdapter.decodePool(poolEntry, utxo);
   assert.ok(decoded);
-  assert.equal(decoded.reserveA, 450931184485n);
+  assert.equal(decoded.reserveA, 463090172n);
   assert.equal(decoded.reserveB, 323014433093609n);
-  assert.ok((calculateAdaTokenPrice(decoded)?.reserveAda ?? 0) > 500);
+  const price = calculateAdaTokenPrice(decoded);
+  assert.ok(price);
+  assert.ok(price.reserveAda > 0 && price.reserveAda < 500);
 });
 
 const songPoolNft: DexAsset = {
@@ -247,4 +249,159 @@ test('Splash royalty V1 rejects a fee split larger than the LP fee', () => {
 
 test('Splash royalty V1 rejects treasury and royalty amounts exceeding reserves', () => {
   assert.equal(splashRoyaltyV1Adapter.decodePool(royaltyEntry, songRoyaltyUtxo(21000000n)), null);
+});
+
+const vyfiPoolNft: DexAsset = {
+  policyId: 'fe87ca564b467aa6de634aad76368ae6219fd4342b5a2da8a3ded881',
+  assetName: '',
+  decimals: 0,
+};
+const vyfiAgent: DexAsset = {
+  policyId: '97bbb7db0baef89caefce61b8107ac74c7a7340166b39d906f174bec',
+  assetName: '54616c6f73',
+  decimals: 0,
+};
+const vyfiAgentEntry: DexPoolRegistryEntry = {
+  poolId: 'vyfi-v1-fe87ca564b467aa6de634aad76368ae6219fd4342b5a2da8a3ded881-97bbb7db0baef89caefce61b8107ac74c7a7340166b39d906f174bec54616c6f73',
+  dex: 'vyfi',
+  version: 'v1',
+  txOutId: '355936375',
+  poolNft: vyfiPoolNft,
+  assetA: { policyId: null, assetName: null, decimals: 6 },
+  assetB: vyfiAgent,
+  enabled: true,
+};
+const vyfiAgentPoolUtxo: DexUtxoValue = {
+  lovelace: 722614080n,
+  assets: new Map([
+    [`${vyfiPoolNft.policyId}:${vyfiPoolNft.assetName}`, 1n],
+    [`${vyfiAgent.policyId}:${vyfiAgent.assetName}`, 983529n],
+  ]),
+  datum: { constructor: 0, fields: [{ int: 17075195 }, { int: 10346 }, { int: 24584927 }] },
+};
+
+test('VyFi V1 decodes the verified AGENT/ADA pool datum and local reserves', () => {
+  const decoded = vyfiV1Adapter.decodePool(vyfiAgentEntry, vyfiAgentPoolUtxo);
+  assert.ok(decoded);
+  assert.equal(decoded.reserveA, 722614080n);
+  assert.equal(decoded.reserveB, 983529n);
+  assert.equal(calculateAdaTokenPrice(decoded)?.priceAda, 722614080 / 1_000_000 / 983529);
+});
+
+test('VyFi V1 rejects a missing pool marker or malformed datum', () => {
+  const missingMarker = { ...vyfiAgentPoolUtxo, assets: new Map(vyfiAgentPoolUtxo.assets) };
+  missingMarker.assets.delete(`${vyfiPoolNft.policyId}:${vyfiPoolNft.assetName}`);
+  assert.equal(vyfiV1Adapter.decodePool(vyfiAgentEntry, missingMarker), null);
+  assert.equal(vyfiV1Adapter.decodePool(vyfiAgentEntry, { ...vyfiAgentPoolUtxo, datum: { constructor: 0, fields: [{ int: 1 }] } }), null);
+});
+
+test('VyFi V1 decodes the current VYFI/ADA marker policy and reserves', () => {
+  const vyfiToken: DexAsset = {
+    policyId: '804f5544c1962a40546827cab750a88404dc7108c0f588b72964754f',
+    assetName: '56594649',
+    decimals: 6,
+  };
+  const poolMarker: DexAsset = {
+    policyId: 'c285d6d7e61163b7f7a918f28e450e37d55dc684450d87b96750d8db',
+    assetName: '',
+    decimals: 0,
+  };
+  const entry: DexPoolRegistryEntry = {
+    poolId: 'vyfi-v1-c285d6d7e61163b7f7a918f28e450e37d55dc684450d87b96750d8db-vyfi-ada',
+    dex: 'vyfi',
+    version: 'v1',
+    txOutId: '356471233',
+    poolNft: poolMarker,
+    assetA: { policyId: null, assetName: null, decimals: 6 },
+    assetB: vyfiToken,
+    enabled: true,
+  };
+  const utxo: DexUtxoValue = {
+    lovelace: 237202075733n,
+    assets: new Map([
+      [`${poolMarker.policyId}:${poolMarker.assetName}`, 1n],
+      [`${vyfiToken.policyId}:${vyfiToken.assetName}`, 10685227857075n],
+    ]),
+    datum: { constructor: 0, fields: [{ int: 934502583 }, { int: 11630405 }, { int: 1524519852298 }] },
+  };
+
+  const decoded = vyfiV1Adapter.decodePool(entry, utxo);
+  assert.ok(decoded);
+  assert.equal(decoded.reserveA, 237202075733n);
+  assert.equal(decoded.reserveB, 10685227857075n);
+  assert.equal(calculateAdaTokenPrice(decoded)?.priceAda, 237202075733 / 1_000_000 / (10685227857075 / 1_000_000));
+});
+
+test('VyFi V1 decodes the xVYFI ADA order-validator pool marker', () => {
+  const xVyfi: DexAsset = {
+    policyId: 'b316f8f668aca7359ecc6073475c0c8106239bf87e05a3a1bd569764',
+    assetName: '7856594649',
+    decimals: 6,
+  };
+  const poolMarker: DexAsset = {
+    policyId: 'fe496bc40d12f5032159a76b0cc4ff1f74e09e34f86bed95357916c8',
+    assetName: '',
+    decimals: 0,
+  };
+  const entry: DexPoolRegistryEntry = {
+    poolId: 'vyfi-v1-fe496bc40d12f5032159a76b0cc4ff1f74e09e34f86bed95357916c8-b316f8f668aca7359ecc6073475c0c8106239bf87e05a3a1bd5697647856594649',
+    dex: 'vyfi',
+    version: 'v1',
+    txOutId: '356410276',
+    poolNft: poolMarker,
+    assetA: { policyId: null, assetName: null, decimals: 6 },
+    assetB: xVyfi,
+    enabled: true,
+  };
+  const utxo: DexUtxoValue = {
+    lovelace: 54814677757n,
+    assets: new Map([
+      [`${poolMarker.policyId}:${poolMarker.assetName}`, 1n],
+      [`${xVyfi.policyId}:${xVyfi.assetName}`, 1626534198218n],
+    ]),
+    datum: { constructor: 0, fields: [{ int: 2401055 }, { int: 57318215 }, { int: 290584412355 }] },
+  };
+
+  const decoded = vyfiV1Adapter.decodePool(entry, utxo);
+  assert.ok(decoded);
+  assert.equal(decoded.reserveA, 54814677757n);
+  assert.equal(decoded.reserveB, 1626534198218n);
+  assert.equal(calculateAdaTokenPrice(decoded)?.priceAda, 54814677757 / 1_000_000 / (1626534198218 / 1_000_000));
+});
+
+test('VyFi V1 decodes the registered USDA/ADA pool from the supplied transaction', () => {
+  const usda: DexAsset = {
+    policyId: 'fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae456',
+    assetName: '55534441',
+    decimals: 6,
+  };
+  const marker: DexAsset = {
+    policyId: 'f7f9777979a2a96777823f149e6696954f43967fc56cfc7095a33f98',
+    assetName: '',
+    decimals: 0,
+  };
+  const entry: DexPoolRegistryEntry = {
+    poolId: 'vyfi-v1-f7f9777979a2a96777823f149e6696954f43967fc56cfc7095a33f98-fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae45655534441',
+    dex: 'vyfi',
+    version: 'v1',
+    txOutId: '356503056',
+    poolNft: marker,
+    assetA: { policyId: null, assetName: null, decimals: 6 },
+    assetB: usda,
+    enabled: true,
+  };
+  const utxo: DexUtxoValue = {
+    lovelace: 8944980697n,
+    assets: new Map([
+      [`${marker.policyId}:${marker.assetName}`, 1n],
+      [`${usda.policyId}:${usda.assetName}`, 2172518357n],
+    ]),
+    datum: { constructor: 0, fields: [{ int: 832543 }, { int: 161645 }, { int: 4302136218 }] },
+  };
+
+  const decoded = vyfiV1Adapter.decodePool(entry, utxo);
+  assert.ok(decoded);
+  assert.equal(decoded.reserveA, 8944980697n);
+  assert.equal(decoded.reserveB, 2172518357n);
+  assert.equal(calculateAdaTokenPrice(decoded)?.priceAda, 8944980697 / 1_000_000 / (2172518357 / 1_000_000));
 });

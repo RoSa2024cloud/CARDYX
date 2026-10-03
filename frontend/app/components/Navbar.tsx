@@ -4,11 +4,12 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChartNoAxesCombined, LogOut, MessageCircle, Search, Settings, Wallet } from 'lucide-react';
+import { ChartNoAxesCombined, LogOut, MessageCircle, Search, Settings, ShieldCheck, Wallet } from 'lucide-react';
 import { useLanguage } from './LanguageProvider';
 import { useCurrency } from './CurrencyProvider';
 import WalletConnectModal from './WalletConnectModal';
 import { useWallet } from './WalletProvider';
+import { useAdminSession } from './AdminSessionProvider';
 
 /** Kürzt eine Cardano-Adresse: addr1q8x7…9k2f */
 function shortAddress(address: string): string {
@@ -18,6 +19,7 @@ function shortAddress(address: string): string {
 
 export default function Navbar({ onTradeClick, showTradeButton = true }: { onTradeClick: () => void; showTradeButton?: boolean }) {
   const wallet = useWallet();
+  const { session: adminSession } = useAdminSession();
   const { language, setLanguage } = useLanguage();
   const { currency, setCurrency } = useCurrency();
   const router = useRouter();
@@ -165,6 +167,7 @@ export default function Navbar({ onTradeClick, showTradeButton = true }: { onTra
                 </button>
               ))}
             </div>
+            <Link href="/admin?section=nfts" onClick={() => setSettingsOpen(false)} className="mt-5 flex items-center gap-2 border-t border-white/10 pt-4 text-sm font-semibold text-cyan-200 hover:text-white"><ShieldCheck className="h-4 w-4" />{adminSession?.authenticated ? (language === 'de' ? 'Adminverwaltung' : 'Admin management') : 'Admin Login'}</Link>
           </section>
         </div>
       )}

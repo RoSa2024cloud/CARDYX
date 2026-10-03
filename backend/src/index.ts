@@ -2,7 +2,9 @@ import express from 'express';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import 'dotenv/config';
-import { type MarketToken } from './market.service';
+import { getMinswapAssetMetrics, type MarketToken, type MinswapAssetMetrics } from './market.service';
+import { normalizedOnchainSupply, tokenSupplyValuation } from './token-supply.service';
+import { nativePolicyMintingDisabled } from './minting-policy.service';
 import { getWalletAnalysis } from './wallet.service';
 import {
   addSwapSignatures,
@@ -21,7 +23,13 @@ import {
 import { getLocalIndexerStatus, runLocalIndexerOnce, startLocalIndexer } from './local-indexer.service';
 import { getDexIndexerStatus, getLocalAdaUsd, runDexIndexerOnce, startDexIndexer } from './dex-indexer.service';
 import { getPoolStateIndexerStatus, startPoolStateIndexer } from './pool-state-indexer.service';
+import { getHolderIndexStatus, requestHolderIndex, startHolderIndexer } from './holder-indexer.service';
 import { getCardanoMarketSummary } from './market-summary.service';
+import { getSocialBuzzSnapshot, getSocialBuzzStatus, startSocialBuzzEngine } from './social-buzz.service';
+import { getTokenSentimentIndexerStatus, requestTokenSentimentRefresh, startTokenSentimentIndexer } from './token-sentiment-indexer.service';
+import { createSubscriptionRouter, requireFeatureAccess } from './subscription.service';
+import { createAdminRouter } from './admin.service';
+import { readApplicationConfiguration } from './application-config.service';
 import cors from 'cors';
 
 const { Pool } = pg;
@@ -32,6 +40,106 @@ const CARDYX_MARKET_SOURCE = process.env.CARDYX_MARKET_SOURCE ?? 'cardyx-local';
 const CARDYX_TRADE_PROVIDER = process.env.CARDYX_TRADE_PROVIDER ?? (dexhunterConfigured() ? 'dexhunter' : 'none');
 const CONFIGURED_ADA_USD = Number(process.env.CARDYX_ADA_USD ?? 0.35);
 const adaUsd = () => getLocalAdaUsd()?.priceUsd ?? (Number.isFinite(CONFIGURED_ADA_USD) ? CONFIGURED_ADA_USD : 0.35);
+
+const supplyMetricCache = new Map<string, { metrics: MinswapAssetMetrics | null; expiresAt: number }>();
+const supplyMetricQueue: { key: string; policyId: string; assetName: string }[] = [];
+const supplyMetricPending = new Set<string>();
+let supplyMetricWorkers = 0;
+const supplyMetricConcurrency = 8;
+const policyCapCache = new Map<string, { currentSupplyRaw: string | null; maxSupplyRaw: string | null; mintingDisabled: boolean; expiresAt: number }>();
+const policyCapQueue: { key: string; policyId: string; assetName: string }[] = [];
+const policyCapPending = new Set<string>();
+let policyCapWorkers = 0;
+const policyCapConcurrency = 4;
+
+function supplyMetricKey(policyId: string, assetName: string) { return `${policyId.toLowerCase()}${assetName.toLowerCase()}`; }
+
+function pumpSupplyMetricQueue() {
+  while (supplyMetricWorkers < supplyMetricConcurrency && supplyMetricQueue.length) {
+    const item = supplyMetricQueue.shift();
+    if (!item) break;
+    supplyMetricWorkers += 1;
+    void getMinswapAssetMetrics(item.policyId, item.assetName)
+      .then((metrics) => {
+        const hasSupply = !!metrics && (metrics.circulatingSupply > 0 || metrics.totalSupply > 0 || (metrics.maxSupply ?? 0) > 0);
+        supplyMetricCache.set(item.key, { metrics, expiresAt: Date.now() + (hasSupply ? 5 * 60_000 : 60_000) });
+      })
+      .catch(() => supplyMetricCache.set(item.key, { metrics: null, expiresAt: Date.now() + 60_000 }))
+      .finally(() => {
+        supplyMetricPending.delete(item.key);
+        supplyMetricWorkers -= 1;
+        pumpSupplyMetricQueue();
+      });
+  }
+}
+
+function scheduleLocalSupplyMetrics(tokens: MarketToken[]) {
+  for (const token of tokens) {
+    const localPriceAda = Number((token as MarketToken & { localPoolPriceAda?: number }).localPoolPriceAda ?? 0);
+    if (localPriceAda <= 0 || !token.policyId || token.assetName == null) continue;
+    const key = supplyMetricKey(token.policyId, token.assetName);
+    if ((supplyMetricCache.get(key)?.expiresAt ?? 0) > Date.now() || supplyMetricPending.has(key)) continue;
+    supplyMetricPending.add(key);
+    supplyMetricQueue.push({ key, policyId: token.policyId, assetName: token.assetName });
+  }
+
+  pumpSupplyMetricQueue();
+}
+
+function pumpPolicyCapQueue() {
+  while (policyCapWorkers < policyCapConcurrency && policyCapQueue.length) {
+    const item = policyCapQueue.shift();
+    if (!item) break;
+    policyCapWorkers += 1;
+    void (async () => {
+      let currentSupplyRaw: string | null = null;
+      let maxSupplyRaw: string | null = null;
+      let mintingDisabled = false;
+      let ttl = 60_000;
+      try {
+        const totals = await pool.query<{ net_quantity: string }>(
+          'SELECT net_quantity FROM cardyx.asset_mint_burn_totals($1, $2)',
+          [item.policyId, item.assetName]
+        );
+        currentSupplyRaw = totals.rows[0]?.net_quantity == null ? null : String(totals.rows[0].net_quantity);
+        const status = await pool.query<{ policy: unknown; current_slot: string }>(
+          'SELECT * FROM cardyx.asset_minting_policy_status($1)',
+          [item.policyId]
+        );
+        const row = status.rows[0];
+        mintingDisabled = !!row && nativePolicyMintingDisabled(row.policy, BigInt(row.current_slot));
+        if (mintingDisabled) {
+          const peak = await pool.query<{ asset_mint_burn_peak: string }>(
+            'SELECT cardyx.asset_mint_burn_peak($1, $2)',
+            [item.policyId, item.assetName]
+          );
+          maxSupplyRaw = peak.rows[0]?.asset_mint_burn_peak == null ? null : String(peak.rows[0].asset_mint_burn_peak);
+          ttl = 5 * 60_000;
+        }
+      } catch (error: any) {
+        ttl = 15_000;
+        console.warn(`Policy-Obergrenze für ${item.policyId}:${item.assetName} nicht verfügbar:`, error.message);
+      } finally {
+        policyCapCache.set(item.key, { currentSupplyRaw, maxSupplyRaw, mintingDisabled, expiresAt: Date.now() + ttl });
+        policyCapPending.delete(item.key);
+        policyCapWorkers -= 1;
+        pumpPolicyCapQueue();
+      }
+    })();
+  }
+}
+
+function scheduleLocalPolicyCaps(tokens: MarketToken[]) {
+  for (const token of tokens) {
+    const localPoolPriceAda = Number((token as MarketToken & { localPoolPriceAda?: number }).localPoolPriceAda ?? 0);
+    if (!Number.isFinite(localPoolPriceAda) || localPoolPriceAda <= 0 || !token.policyId || token.assetName == null) continue;
+    const key = supplyMetricKey(token.policyId, token.assetName);
+    if ((policyCapCache.get(key)?.expiresAt ?? 0) > Date.now() || policyCapPending.has(key)) continue;
+    policyCapPending.add(key);
+    policyCapQueue.push({ key, policyId: token.policyId, assetName: token.assetName });
+  }
+  pumpPolicyCapQueue();
+}
 
 const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 
@@ -113,6 +221,20 @@ app.use(
         }
   )
 );
+
+app.use('/api/subscription', createSubscriptionRouter(pool));
+app.use('/api/admin', createAdminRouter(pool, () => ({
+  local: getLocalIndexerStatus(), dex: getDexIndexerStatus(), poolState: getPoolStateIndexerStatus(),
+  holders: getHolderIndexStatus(), social: getSocialBuzzStatus(), tokenSentiment: getTokenSentimentIndexerStatus(),
+})));
+app.get('/api/application/configuration', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const configuration = await readApplicationConfiguration(pool);
+    res.json({ success: true, data: { revision: configuration.revision, features: configuration.settings.features, terminal: configuration.settings.terminal } });
+  } catch { res.status(503).json({ success: false, error: 'Application configuration unavailable.' }); }
+});
+app.use('/api/trade', requireFeatureAccess(pool, 'trading'));
 
 // Diese Funktion prüft beim Starten des Backends, ob die Tabelle existiert, und legt sie bei Bedarf an
 async function initDatabase() {
@@ -303,6 +425,18 @@ if (process.env.RUN_DEX_INDEXER !== 'false') {
 
 if (process.env.RUN_POOL_STATE_INDEXER !== 'false') {
   startPoolStateIndexer(pool);
+}
+
+if (process.env.RUN_HOLDER_INDEXER !== 'false') {
+  startHolderIndexer(pool);
+}
+
+if (process.env.RUN_SOCIAL_BUZZ !== 'false') {
+  startSocialBuzzEngine();
+}
+
+if (process.env.RUN_TOKEN_SENTIMENT_INDEXER !== 'false') {
+  startTokenSentimentIndexer(pool);
 }
 
 // System-Status Route
@@ -715,7 +849,7 @@ async function getLocalMarketFeed() {
         marketCapAda: Number(row.market_cap_ada ?? 0),
         fdvAda: Number(row.fdv_ada ?? 0),
         marketCapRank: null,
-        circulatingSupply: Number(row.circulating_quantity ?? 0),
+        circulatingSupply: 0,
         totalSupply: null,
         maxSupply: null,
         athUsd: 0,
@@ -738,6 +872,7 @@ async function getLocalMarketFeed() {
         holderCount: Number(row.holder_count ?? 0),
         utxoCount: Number(row.utxo_count ?? 0),
         circulatingQuantity: Number(row.circulating_quantity ?? 0),
+        circulatingQuantityRaw: row.circulating_quantity == null ? null : String(row.circulating_quantity),
         latestActivity: row.latest_activity ?? null,
         snapshotRefreshedAt: row.refreshed_at ?? null,
         source: priceAda > 0 || rawUsd > 0 ? 'cardyx-local' : 'external-display-fallback',
@@ -871,12 +1006,49 @@ async function getLocalTokenById(id: string) {
 function localCatalogToken(token: MarketToken, adaPriceUsd: number) {
   const localPoolPriceAda = Number((token as MarketToken & { localPoolPriceAda?: number }).localPoolPriceAda ?? 0);
   const localPriceAda = localPoolPriceAda > 0 ? localPoolPriceAda : token.priceAda;
-  const priceUsd = token.priceUsd > 0
+  const hasLocalPrice = localPoolPriceAda > 0 && !!token.policyId && token.assetName != null;
+  const priceUsd = hasLocalPrice && adaPriceUsd > 0
+    ? localPoolPriceAda * adaPriceUsd
+    : token.priceUsd > 0
     ? token.priceUsd
     : localPriceAda > 0 && adaPriceUsd > 0 ? localPriceAda * adaPriceUsd : 0;
+  const supplyMetrics = hasLocalPrice ? supplyMetricCache.get(supplyMetricKey(token.policyId!, token.assetName!))?.metrics : null;
+  const policyCap = hasLocalPrice ? policyCapCache.get(supplyMetricKey(token.policyId!, token.assetName!)) : null;
+  const policyMaxSupply = policyCap?.mintingDisabled && policyCap.maxSupplyRaw !== null
+    ? normalizedOnchainSupply(policyCap.maxSupplyRaw, token.decimals)
+    : null;
+  const hasProviderCirculation = !!supplyMetrics && supplyMetrics.circulatingSupply > 0;
+  const hasProviderTotal = !!supplyMetrics && supplyMetrics.totalSupply > 0;
+  const currentSupplyRaw = policyCap?.currentSupplyRaw ?? null;
+  const valuation = hasLocalPrice ? tokenSupplyValuation({
+    rawQuantity: currentSupplyRaw ?? token.circulatingQuantityRaw ?? String(token.circulatingQuantity ?? ''),
+    decimals: token.decimals,
+    priceAda: localPoolPriceAda,
+    adaPriceUsd,
+    circulatingSupply: hasProviderCirculation ? supplyMetrics!.circulatingSupply : null,
+    providerTotalSupply: null,
+    maxSupply: policyMaxSupply?.value ?? null,
+  }) : null;
   return {
     ...token,
+    priceAda: hasLocalPrice ? localPoolPriceAda : token.priceAda,
     priceUsd,
+    marketCapAda: valuation?.marketCapAda ?? token.marketCapAda,
+    marketCapUsd: valuation?.marketCapUsd ?? token.marketCapUsd,
+    fdvAda: valuation?.fdvAda ?? token.fdvAda,
+    fdvUsd: valuation?.fdvUsd ?? token.fdvUsd,
+    circulatingSupply: valuation?.circulatingSupply ?? (hasLocalPrice ? 0 : token.circulatingSupply),
+    totalSupply: valuation?.totalSupply ?? token.totalSupply,
+    maxSupply: hasLocalPrice ? valuation?.maxSupply ?? null : token.maxSupply,
+    maxSupplyExact: policyMaxSupply?.exact ?? null,
+    policyMaxSupplyRaw: policyCap?.mintingDisabled ? policyCap.maxSupplyRaw : null,
+    currentSupplyRaw: policyCap?.currentSupplyRaw ?? null,
+    maxSupplySource: policyCap?.mintingDisabled && policyCap.maxSupplyRaw !== null ? 'cardyx-expired-native-policy' as const : null,
+    onchainSupply: valuation?.onchainSupply ?? null,
+    onchainSupplyExact: valuation?.onchainSupplyExact ?? null,
+    marketCapBasis: valuation?.marketCapBasis ?? null,
+    fdvBasis: valuation?.fdvBasis ?? null,
+    supplySource: (hasLocalPrice ? (hasProviderCirculation || hasProviderTotal ? 'minswap-api' : valuation?.totalSupply !== null && valuation?.totalSupply !== undefined ? 'cardyx-on-chain' : null) : null) as 'minswap-api' | 'cardyx-on-chain' | null,
     source: 'cardyx-local-catalog',
     pricing: localPriceAda > 0 ? 'local-price-index' : priceUsd > 0 ? 'ada-usd-conversion' : 'not-indexed',
   };
@@ -885,13 +1057,15 @@ function localCatalogToken(token: MarketToken, adaPriceUsd: number) {
 async function getProgressiveMarketFeed(): Promise<any> {
   const local = await getLocalMarketFeed();
   if (!local) throw new Error('Lokaler Marktfeed nicht verfügbar');
+  scheduleLocalSupplyMetrics(local.tokens);
+  scheduleLocalPolicyCaps(local.tokens);
   const tokens = local.tokens
     .filter((token: MarketToken) =>
       token.ticker !== 'ASSET'
       && !token.name.startsWith('Cardano Asset ')
       && (token.priceAda > 0 || token.priceUsd > 0)
     )
-    .map((token: MarketToken) => ({ ...token, source: 'cardyx-local-catalog', pricing: token.priceAda > 0 || token.priceUsd > 0 ? 'local-price-index' : 'not-indexed' }));
+    .map((token: MarketToken) => localCatalogToken(token, local.adaPriceUsd));
   return {
     ...local,
     source: 'cardyx-local-catalog',
@@ -919,6 +1093,8 @@ app.get('/api/market/catalog', async (_req, res) => {
     const adaPriceUsd = summaryAdaPriceUsd > 0
       ? summaryAdaPriceUsd
       : market.adaPriceUsd;
+    scheduleLocalSupplyMetrics(market.tokens);
+    scheduleLocalPolicyCaps(market.tokens);
     const tokens = market.tokens.map((token: MarketToken) => localCatalogToken(token, adaPriceUsd));
     res.json({
       success: true,
@@ -946,6 +1122,51 @@ app.get('/api/market/summary', async (_req, res) => {
   }
 });
 
+app.get('/api/market/social-sentiment', (_req, res) => {
+  res.json({ success: true, configured: true, data: getSocialBuzzSnapshot(), status: getSocialBuzzStatus() });
+});
+
+app.get('/api/market/token-sentiment/:id', async (req, res) => {
+  try {
+    const result = await pool.query<{
+      sentiment: string;
+      posts_24h: string;
+      interactions_24h: string;
+      trend: 'up' | 'down' | 'flat';
+      sources: string[];
+      updated_at: Date;
+    }>(
+      `SELECT sentiment::text, posts_24h::text, interactions_24h::text, trend, sources, updated_at
+       FROM cardyx.token_social_sentiment_snapshot
+       WHERE market_id = $1`,
+      [req.params.id]
+    );
+    const row = result.rows[0];
+    const snapshot = row ? {
+      sentiment: Number(row.sentiment),
+      posts24h: Number(row.posts_24h),
+      interactions24h: Number(row.interactions_24h),
+      trend: row.trend,
+      sources: row.sources,
+      updatedAt: new Date(row.updated_at).getTime(),
+    } : null;
+    const stale = !snapshot || Date.now() - snapshot.updatedAt > 15 * 60 * 1000;
+    if (stale) await requestTokenSentimentRefresh(pool, req.params.id);
+    res.json({ success: true, configured: true, data: snapshot, pending: stale });
+  } catch (error: any) {
+    console.error(`Token sentiment for ${req.params.id} unavailable:`, error.message);
+    res.status(503).json({ success: false, error: 'Token sentiment is currently unavailable.' });
+  }
+});
+
+app.get('/api/indexer/social-buzz/status', (_req, res) => {
+  res.json({ success: true, data: getSocialBuzzStatus() });
+});
+
+app.get('/api/indexer/token-sentiment/status', (_req, res) => {
+  res.json({ success: true, data: getTokenSentimentIndexerStatus() });
+});
+
 // Kompatibilitaet fuer bestehende Clients, die die fruehere Top-50-Route nutzen.
 app.get('/api/market/top50', async (_req, res) => {
   try {
@@ -965,14 +1186,76 @@ app.get('/api/market/token/:id', async (req, res) => {
     const localToken = market.tokens.find((token: MarketToken) =>
       token.id === req.params.id || token.policyId === req.params.id || token.ticker === req.params.id
     );
-    if (localToken) return res.json({ success: true, data: {
+    if (localToken) {
+      scheduleLocalSupplyMetrics([localToken]);
+      scheduleLocalPolicyCaps([localToken]);
+      return res.json({ success: true, data: {
       token: localCatalogToken(localToken, market.adaPriceUsd),
       adaPriceUsd: market.adaPriceUsd,
     } });
+    }
     res.status(404).json({ success: false, error: 'Token nicht verfügbar.' });
   } catch (error: any) {
     console.error(`Fehler in der Token-Route (${req.params.id}):`, error.message);
     res.status(502).json({ success: false, error: 'Token-Daten aktuell nicht verfügbar' });
+  }
+});
+
+app.get('/api/market/supply-history/:id', async (req, res) => {
+  try {
+    const market = await getLocalMarketFeed();
+    const token = market?.tokens.find((entry: MarketToken) => entry.id === req.params.id);
+    const localPoolPriceAda = Number((token as (MarketToken & { localPoolPriceAda?: number }) | undefined)?.localPoolPriceAda ?? 0);
+    if (!token?.policyId || token.assetName == null || !Number.isFinite(localPoolPriceAda) || localPoolPriceAda <= 0) {
+      return res.status(404).json({ success: false, error: 'Token ohne lokalen Preis nicht verfügbar.' });
+    }
+
+    const requestedLimit = Number(req.query.limit);
+    const requestedOffset = Number(req.query.offset);
+    const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 25;
+    const offset = Number.isInteger(requestedOffset) ? Math.max(0, requestedOffset) : 0;
+    const [totals, history] = await Promise.all([
+      pool.query('SELECT * FROM cardyx.asset_mint_burn_totals($1, $2)', [token.policyId, token.assetName]),
+      pool.query('SELECT * FROM cardyx.asset_mint_burn_history($1, $2, $3, $4)', [token.policyId, token.assetName, limit, offset]),
+    ]);
+    const total = totals.rows[0];
+    const policyStatus = await pool.query<{ policy: unknown; current_slot: string }>(
+      'SELECT * FROM cardyx.asset_minting_policy_status($1)',
+      [token.policyId]
+    );
+    const policy = policyStatus.rows[0];
+    const mintingDisabled = !!policy && nativePolicyMintingDisabled(policy.policy, BigInt(policy.current_slot));
+    const peakSupply = mintingDisabled
+      ? await pool.query<{ asset_mint_burn_peak: string }>('SELECT cardyx.asset_mint_burn_peak($1, $2)', [token.policyId, token.assetName])
+      : null;
+    res.json({
+      success: true,
+      data: {
+        ticker: token.ticker,
+        decimals: token.decimals ?? null,
+        totals: {
+          mintedRaw: String(total?.minted_quantity ?? 0),
+          burnedRaw: String(total?.burned_quantity ?? 0),
+          netRaw: String(total?.net_quantity ?? 0),
+          eventCount: Number(total?.event_count ?? 0),
+          maxSupplyRaw: peakSupply?.rows[0]?.asset_mint_burn_peak == null ? null : String(peakSupply.rows[0].asset_mint_burn_peak),
+          mintingDisabled,
+        },
+        events: history.rows.map((event: any) => ({
+          txHash: String(event.tx_hash),
+          blockNo: String(event.block_no),
+          slotNo: String(event.slot_no),
+          occurredAt: event.occurred_at,
+          quantityRaw: String(event.quantity),
+          type: BigInt(String(event.quantity)) > 0n ? 'mint' : 'burn',
+        })),
+        pagination: { limit, offset },
+        source: 'cardano-db-sync',
+      },
+    });
+  } catch (error: any) {
+    console.error(`Mint-/Burn-Historie für ${req.params.id} nicht verfügbar:`, error.message);
+    res.status(503).json({ success: false, error: 'Mint-/Burn-Historie aktuell nicht verfügbar.' });
   }
 });
 
@@ -1349,19 +1632,67 @@ app.post('/api/market/dex/index/refresh', async (req, res) => {
   }
 });
 
-// OHLC-Chartdaten eines einzelnen Tokens (7 oder 30 Tage)
+// OHLC-Chartdaten aus CARDYX-eigenen Preissnapshots und lokalen Swaps
 app.get('/api/market/chart/:id', async (req, res) => {
   const { id } = req.params;
-  const days = req.query.days === '30' ? '30' : '7';
+  const ranges = {
+    '15m': { lookback: '15 minutes', bucket: '1 minute' },
+    '1h': { lookback: '1 hour', bucket: '5 minutes' },
+    '4h': { lookback: '4 hours', bucket: '15 minutes' },
+    '1D': { lookback: '1 day', bucket: '1 hour' },
+    '1W': { lookback: '7 days', bucket: '1 hour' },
+    '1Y': { lookback: '365 days', bucket: '1 day' },
+  } as const;
+  const range = typeof req.query.range === 'string' && req.query.range in ranges ? req.query.range as keyof typeof ranges : '1D';
+  const { lookback, bucket } = ranges[range];
 
   try {
     const result = await pool.query(
-      `SELECT extract(epoch FROM bucket_start) * 1000 AS time,
-              open, high, low, close, volume_ada
-       FROM cardyx.asset_market_candle
-        WHERE market_id = $1 AND timeframe = $2 AND source = 'cardyx-local-dex-indexer'
-       ORDER BY bucket_start ASC`,
-      [id, days === '30' ? '30d' : '7d']
+      `WITH snapshots AS (
+         SELECT date_bin($2::interval, observed_at, timestamptz '2000-01-01') AS bucket_start,
+                observed_at,
+                price_ada
+         FROM cardyx.asset_market_snapshot
+         WHERE market_id = $1
+           AND source = 'cardyx-local-dex-indexer'
+           AND observed_at >= now() - $3::interval
+           AND price_ada > 0
+       ), price_candles AS (
+         SELECT bucket_start,
+                (array_agg(price_ada ORDER BY observed_at ASC))[1] AS open,
+                max(price_ada) AS high,
+                min(price_ada) AS low,
+                (array_agg(price_ada ORDER BY observed_at DESC))[1] AS close
+         FROM snapshots
+         GROUP BY bucket_start
+       ), swaps AS (
+         SELECT market_id, block_time, abs(delta_ada) AS volume_ada
+         FROM cardyx.dex_pool_state
+         WHERE market_id = $1 AND event_type IN ('buy', 'sell') AND block_time >= now() - $3::interval
+         UNION ALL
+         SELECT market_a AS market_id, block_time, value_ada AS volume_ada
+         FROM cardyx.dex_pair_state
+         WHERE market_a = $1 AND event_type = 'swap' AND block_time >= now() - $3::interval
+         UNION ALL
+         SELECT market_b AS market_id, block_time, value_ada AS volume_ada
+         FROM cardyx.dex_pair_state
+         WHERE market_b = $1 AND event_type = 'swap' AND block_time >= now() - $3::interval
+       ), swap_volumes AS (
+         SELECT date_bin($2::interval, block_time, timestamptz '2000-01-01') AS bucket_start,
+                sum(volume_ada) AS volume_ada
+         FROM swaps
+         GROUP BY 1
+       )
+       SELECT extract(epoch FROM price_candles.bucket_start) * 1000 AS time,
+              price_candles.open,
+              price_candles.high,
+              price_candles.low,
+              price_candles.close,
+              coalesce(swap_volumes.volume_ada, 0) AS volume_ada
+       FROM price_candles
+       LEFT JOIN swap_volumes USING (bucket_start)
+       ORDER BY price_candles.bucket_start ASC`,
+      [id, bucket, lookback]
     );
     const localCandles = result.rows.map((row: any) => ({
       time: Number(row.time),
@@ -1371,7 +1702,7 @@ app.get('/api/market/chart/:id', async (req, res) => {
       close: Number(row.close),
       volume: Number(row.volume_ada ?? 0),
     }));
-    res.json({ success: true, data: { id, days, candles: localCandles, source: 'cardyx-local', currency: 'ADA' } });
+    res.json({ success: true, data: { id, range, candles: localCandles, source: 'cardyx-local', currency: 'ADA' } });
   } catch (error: any) {
     console.error(`Fehler in der Chart-Route (${id}):`, error.message);
     res.status(502).json({ success: false, error: 'Chartdaten aktuell nicht verfügbar' });
@@ -1401,6 +1732,7 @@ app.get('/api/market/trades/:id', async (req, res) => {
        LIMIT 50`,
       [token.id]
     );
+
     if (indexed.rows.length > 0) {
       if (localTradeCache.size >= 100) localTradeCache.clear();
       localTradeCache.set(req.params.id, { expiresAt: Date.now() + 30_000, trades: indexed.rows });
@@ -1418,6 +1750,55 @@ app.get('/api/market/trades/:id', async (req, res) => {
     console.error(`Lokale Trades für ${req.params.id} nicht verfügbar:`, error.message);
     res.status(503).json({ success: false, error: 'Lokale Trade-Historie nicht verfügbar.' });
   }
+});
+
+app.get('/api/market/holders/:id', async (req, res) => {
+  const mode = req.query.mode === 'groups' ? 'groups' : 'wallets';
+  try {
+    const tokenResult = await pool.query<{ policy_id: string | null; asset_name: string | null }>(
+      `SELECT policy_id, asset_name
+       FROM cardyx.asset_catalog
+       WHERE market_id = $1
+       LIMIT 1`,
+      [req.params.id]
+    );
+    const token = tokenResult.rows[0];
+    if (!token?.policy_id || !token.asset_name) {
+      return res.status(404).json({ success: false, error: 'Token nicht im lokalen Katalog.' });
+    }
+
+    const state = await pool.query<{ status: string; last_error: string | null }>(
+      `SELECT status, last_error FROM cardyx.asset_holder_index_state
+       WHERE policy_id = $1 AND asset_name = $2`,
+      [token.policy_id, token.asset_name]
+    );
+    if (state.rows[0]?.status !== 'ready') {
+      requestHolderIndex(pool, token.policy_id, token.asset_name);
+      return res.status(202).json({ success: true, data: { pending: true, mode, source: 'cardyx-holder-indexer', error: state.rows[0]?.last_error ?? null } });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM cardyx.top_asset_holders($1, $2, $3)',
+      [token.policy_id, token.asset_name, mode]
+    );
+    const holders = result.rows.map((row: any) => ({
+      key: String(row.holder_key),
+      address: String(row.address),
+      addressCount: Number(row.address_count),
+      balance: Number(row.balance),
+      share: Number(row.share),
+      totalHolders: Number(row.total_holders),
+      totalSupply: Number(row.total_supply),
+    }));
+    res.json({ success: true, data: { holders, mode, source: 'cardyx-holder-indexer' } });
+  } catch (error: any) {
+    console.error(`Lokale Holder für ${req.params.id} nicht verfügbar:`, error.message);
+    res.status(503).json({ success: false, error: 'Lokale Holderdaten sind aktuell nicht verfügbar.' });
+  }
+});
+
+app.get('/api/indexer/holder/status', (_req, res) => {
+  res.json({ success: true, data: getHolderIndexStatus() });
 });
 
 // ===================================================================

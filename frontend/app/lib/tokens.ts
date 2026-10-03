@@ -34,6 +34,10 @@ export interface MarketToken {
   circulatingSupply: number;
   totalSupply: number | null;
   maxSupply: number | null;
+  maxSupplyExact?: string | null;
+  maxSupplySource?: 'cardyx-expired-native-policy' | 'minswap-api' | 'market-provider' | null;
+  policyMaxSupplyRaw?: string | null;
+  currentSupplyRaw?: string | null;
   athUsd: number;
   athChangePct: number;
   athDate: string | null;
@@ -54,6 +58,12 @@ export interface MarketToken {
   holderCount?: number;
   utxoCount?: number;
   circulatingQuantity?: number;
+  circulatingQuantityRaw?: string | null;
+  onchainSupply?: number | null;
+  onchainSupplyExact?: string | null;
+  marketCapBasis?: 'verified-circulating-supply' | 'on-chain-supply-estimate' | null;
+  fdvBasis?: 'maximum-supply' | 'provider-total-supply' | 'on-chain-supply' | null;
+  supplySource?: 'minswap-api' | 'cardyx-on-chain' | null;
   latestActivity?: string | null;
   snapshotRefreshedAt?: string | null;
   source?: string | null;

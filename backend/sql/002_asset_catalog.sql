@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS cardyx.asset_catalog (
 INSERT INTO cardyx.asset_catalog (market_id, ticker, display_name, category)
 VALUES
   ('cardano', 'ADA', 'Cardano', 'layer-1'),
-  ('ascend', 'ASCEND', 'Ascend', 'other'),
   ('fetch-ai', 'FET', 'Artificial Superintelligence Alliance', 'ai'),
   ('midnight-3', 'NIGHT', 'Midnight', 'infrastructure'),
   ('snek', 'SNEK', 'Snek', 'meme'),
@@ -44,6 +43,7 @@ VALUES
   ('xerberus', 'XER', 'Xerberus', 'infrastructure'),
   ('wingriders', 'WRT', 'WingRiders', 'defi'),
   ('optim-finance', 'O', 'Optim Finance', 'defi'),
+  ('nunet', 'NTX', 'NuNet', 'ai'),
   ('surge-3', 'SURGE', 'Surge', 'defi'),
   ('nikepig', 'NIKEPIG', 'Nikepig', 'meme'),
   ('titan-3', 'TITAN', 'Titan', 'meme'),
@@ -61,13 +61,6 @@ VALUES
   ('occamfi', 'OCC', 'OccamFi', 'defi'),
   ('viper-2', 'VIPER', 'VIPER', 'meme')
 ON CONFLICT (market_id) DO NOTHING;
-
-UPDATE cardyx.asset_catalog
-SET policy_id = 'eb7a93ebc321647673490810f618b548d7c24aa64d30ae342dba7076',
-    asset_name = '0014df10415343454e44',
-    official_url = 'https://ascend.market/',
-    updated_at = now()
-WHERE market_id = 'ascend';
 
 CREATE OR REPLACE VIEW cardyx.asset_catalog_public AS
 SELECT

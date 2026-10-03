@@ -32,9 +32,26 @@ interface SwapQuote {
   splits?: { dex: string }[];
 }
 
+interface ApiEnvelope<T> {
+  success?: boolean;
+  data?: T;
+  error?: string;
+}
+
+async function readApiEnvelope<T>(response: Response): Promise<{ payload: ApiEnvelope<T> | null; malformed: boolean }> {
+  const body = await response.text();
+  if (!body.trim()) return { payload: null, malformed: false };
+  try {
+    return { payload: JSON.parse(body) as ApiEnvelope<T>, malformed: false };
+  } catch {
+    return { payload: null, malformed: true };
+  }
+}
+
 const QUICK_PERCENTAGES = [25, 50, 75] as const;
 const LIMIT_DISCOUNTS = [5, 10, 25, 50] as const;
 const SLIPPAGE = 0.5;
+const DEX_ROUTE_FALLBACKS = [['CSWAP'], ['WINGRIDERV2'], ['MINSWAPV2'], ['SPLASH']] as const;
 
 function normalizeLimitPriceInput(value: string): string {
   const normalized = value.replace(',', '.').replace(/[^0-9.]/g, '');
@@ -62,6 +79,9 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoteState, setQuoteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [canRetryQuote, setCanRetryQuote] = useState(false);
+  const [quoteRetryKey, setQuoteRetryKey] = useState(0);
+  const [quoteBlacklist, setQuoteBlacklist] = useState<string[]>([]);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [tradeState, setTradeState] = useState<'idle' | 'building' | 'signing' | 'submitting' | 'complete'>('idle');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -97,48 +117,94 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
   // DexHunter liefert die vollständige, handelbare Asset-ID und die echte Quote.
   useEffect(() => {
     if (!buyToken?.ticker || !expectedAssetId || amountAda <= 0 || (mode === 'limit' && targetPriceAda <= 0)) {
-      setAsset(null);
-      setQuote(null);
-      setQuoteState('idle');
-      return;
+      const resetTimer = window.setTimeout(() => {
+        setAsset(null);
+        setQuote(null);
+        setQuoteState('idle');
+        setCanRetryQuote(false);
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
     }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setQuoteState('loading');
       setError(null);
+      setCanRetryQuote(false);
+      setQuote(null);
+      setAsset(null);
+      setQuoteBlacklist([]);
       setTxHash(null);
+      let retryableQuoteFailure = false;
       try {
         const searchResponse = await fetch(`${API_URL}/api/trade/tokens?query=${encodeURIComponent(buyToken.ticker)}`);
-        const searchJson = await searchResponse.json();
-        if (!searchResponse.ok || !searchJson.success || !Array.isArray(searchJson.data)) throw new Error(searchJson.error ?? 'Token nicht handelbar.');
+        const searchResult = await readApiEnvelope<DexHunterToken[]>(searchResponse);
+        const searchJson = searchResult.payload;
+        if (!searchResponse.ok || !searchJson?.success || !Array.isArray(searchJson.data)) {
+          throw new Error(searchJson?.error ?? (searchResult.malformed ? `Token-API antwortete mit HTTP ${searchResponse.status} und ungültigem JSON.` : 'Token nicht handelbar.'));
+        }
         const resolved = searchJson.data.find((entry: DexHunterToken) => entry.token_id?.toLowerCase() === expectedAssetId);
         if (!resolved?.token_id) throw new Error(`${buyToken.ticker} ist bei DexHunter nicht handelbar.`);
         if (cancelled) return;
         setAsset(resolved);
 
-        const estimateResponse = await fetch(`${API_URL}${mode === 'limit' ? '/api/trade/limit/estimate' : '/api/trade/estimate'}`, {
+        const estimateEndpoint = `${API_URL}${mode === 'limit' ? '/api/trade/limit/estimate' : '/api/trade/estimate'}`;
+        const requestEstimate = (amount: number, blacklistedDexes: readonly string[]) => fetch(estimateEndpoint, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token_in: '', token_out: resolved.token_id, amount_in: amountAda, ...(mode === 'limit' ? { wanted_price: targetPriceAda } : { slippage: SLIPPAGE }), blacklisted_dexes: [] }),
+          body: JSON.stringify({ token_in: '', token_out: resolved.token_id, amount_in: amount, ...(mode === 'limit' ? { wanted_price: targetPriceAda } : { slippage: SLIPPAGE }), blacklisted_dexes: blacklistedDexes }),
         });
-        const estimateJson = await estimateResponse.json();
-        if (!estimateResponse.ok || !estimateJson.success) throw new Error(estimateJson.error ?? 'Live-Quote nicht verfügbar.');
+        let estimateResult: Awaited<ReturnType<typeof readApiEnvelope<SwapQuote>>> = { payload: null, malformed: false };
+        let estimateStatus = 0;
+        let selectedBlacklist: readonly string[] = [];
+        let quoteAccepted = false;
+        const routeAttempts: readonly (readonly string[])[] = [[], ...(mode === 'trade' ? DEX_ROUTE_FALLBACKS : [])];
+
+        for (const blacklistedDexes of routeAttempts) {
+          if (cancelled) return;
+          const retryLimit = blacklistedDexes.length === 0 ? 2 : 0;
+          for (let retry = 0; retry <= retryLimit; retry += 1) {
+            const estimateResponse = await requestEstimate(amountAda, blacklistedDexes);
+            estimateStatus = estimateResponse.status;
+            estimateResult = await readApiEnvelope<SwapQuote>(estimateResponse);
+            const payload = estimateResult.payload;
+            if (estimateResponse.ok && payload?.success && payload.data) {
+              selectedBlacklist = blacklistedDexes;
+              quoteAccepted = true;
+              break;
+            }
+            const routeRejected = (payload?.error ?? '').includes('HTTP 400');
+            retryableQuoteFailure = routeRejected || estimateStatus >= 500 || estimateResult.malformed;
+            if (!retryableQuoteFailure) break;
+            if (!routeRejected && retry < retryLimit) await new Promise((resolve) => window.setTimeout(resolve, 350 * (retry + 1)));
+          }
+          if (quoteAccepted) break;
+        }
+
+        if (!quoteAccepted) {
+          const message = estimateResult.payload?.error
+            ?? (estimateResult.malformed ? `Trade-API antwortete mit HTTP ${estimateStatus} und ungültigem JSON.` : 'Live-Quote nicht verfügbar.');
+          throw new Error(message);
+        }
         if (cancelled) return;
+        const estimateJson = estimateResult.payload;
+        if (!estimateJson?.data) throw new Error('Live-Quote nicht verfügbar.');
+        setQuoteBlacklist([...selectedBlacklist]);
         setQuote({
           ...estimateJson.data,
           total_output_without_slippage: estimateJson.data.total_output_without_slippage ?? estimateJson.data.total_output,
         });
         setQuoteState('ready');
-      } catch (requestError: any) {
+      } catch (requestError: unknown) {
         if (cancelled) return;
         setAsset(null);
         setQuote(null);
-        setError(requestError.message ?? 'Live-Quote nicht verfügbar.');
+        setCanRetryQuote(retryableQuoteFailure);
+        setError(requestError instanceof Error ? requestError.message : 'Live-Quote nicht verfügbar.');
         setQuoteState('error');
       }
     }, 350);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [buyToken?.ticker, expectedAssetId, amountAda, mode, targetPriceAda]);
+  }, [buyToken?.ticker, expectedAssetId, amountAda, mode, targetPriceAda, quoteRetryKey]);
 
   const executeSwap = async () => {
     if (!wallet.address || !wallet.api) return setError(language === 'de' ? 'Bitte zuerst oben rechts eine Wallet verbinden.' : 'Connect a wallet first.');
@@ -157,10 +223,10 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
     try {
       const buildEndpoint = mode === 'limit' ? '/api/trade/limit/build' : mode === 'dca' ? '/api/trade/dca/create' : '/api/trade/build';
       const payload = mode === 'limit'
-        ? { buyer_address: wallet.address, token_in: '', token_out: asset.token_id, amount_in: amountAda, wanted_price: targetPriceAda, multiples: 1, blacklisted_dexes: [] }
+        ? { buyer_address: wallet.address, token_in: '', token_out: asset.token_id, amount_in: amountAda, wanted_price: targetPriceAda, multiples: 1, blacklisted_dexes: quoteBlacklist }
         : mode === 'dca'
           ? { user_address: wallet.address, token_in: '', token_out: asset.token_id, amount_in: amountAda, interval: dcaInterval, interval_length: intervalLength, slippage: SLIPPAGE, cycles, dex_allowlist: [] }
-          : { buyer_address: wallet.address, token_in: '', token_out: asset.token_id, amount_in: amountAda, slippage: SLIPPAGE, blacklisted_dexes: [] };
+          : { buyer_address: wallet.address, token_in: '', token_out: asset.token_id, amount_in: amountAda, slippage: SLIPPAGE, blacklisted_dexes: quoteBlacklist };
       setTradeState('building');
       const buildResponse = await fetch(`${API_URL}${buildEndpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       const buildJson = await buildResponse.json();
@@ -175,16 +241,21 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
 
       setTxHash(await wallet.api.submitTx(signJson.data.cbor));
       setTradeState('complete');
-    } catch (tradeError: any) {
+    } catch (tradeError: unknown) {
       setTradeState('idle');
-      setError(tradeError?.info ?? tradeError?.message ?? 'Swap wurde nicht ausgeführt.');
+      const details = tradeError && typeof tradeError === 'object' ? tradeError as { info?: unknown; message?: unknown } : null;
+      setError(typeof details?.info === 'string' ? details.info : typeof details?.message === 'string' ? details.message : 'Swap wurde nicht ausgeführt.');
     }
   };
 
   const busy = ['building', 'signing', 'submitting'].includes(tradeState);
   const buttonText = !wallet.address ? copy.connect : mode === 'limit' ? copy.placeLimit : mode === 'dca' ? copy.createDca : tradeState === 'building' ? copy.building : tradeState === 'signing' ? copy.signing : tradeState === 'submitting' ? copy.submitting : copy.confirm;
   const route = quote?.splits?.map((split) => split.dex).filter((dex, index, dexes) => dexes.indexOf(dex) === index).join(' + ');
-  const displayedError = language === 'en' && error
+  const displayedError = error?.includes('HTTP 400')
+    ? language === 'de'
+      ? 'DexHunter konnte diese Quote gerade nicht berechnen. Bitte versuche es erneut oder passe den Betrag an.'
+      : 'DexHunter could not calculate this quote right now. Retry or adjust the amount.'
+    : language === 'en' && error
     ? error.includes('Partner-ID')
       ? 'DexHunter partner ID is not configured in the backend.'
       : error.includes('Token nicht handelbar')
@@ -227,9 +298,9 @@ export default function TradePanel({ tokens, adaPriceUsd, selectedToken, onSelec
           <div className="mt-2.5 flex items-center gap-1.5"><span className="mr-auto text-[10px] text-slate-500">{copy.belowMarket}</span>{LIMIT_DISCOUNTS.map((discount) => <button key={discount} type="button" disabled={!currentPriceDisplay} onClick={() => { setTargetPrice(formatPriceValue(currentPriceDisplay * (1 - discount / 100))); setTargetPriceCurrency(currency); }} className="rounded-md border border-red-400/20 bg-red-500/[0.08] px-2 py-1 text-[10px] font-bold text-red-300 hover:border-red-300/50 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40">−{discount}%</button>)}</div>
         </section>}
         {quote && <dl className="space-y-1 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px]"><div className="flex justify-between"><dt className="text-slate-500">{copy.minReceive} ({SLIPPAGE.toFixed(1)}% {language === 'de' ? 'Slippage' : 'slippage'})</dt><dd className="font-semibold text-slate-200">{Number(quote.total_output).toLocaleString('en-US', { maximumFractionDigits: 6 })} {asset?.ticker}</dd></div><div className="flex justify-between"><dt className="text-slate-500">{copy.route}</dt><dd className="max-w-[170px] truncate text-right font-semibold text-blue-300">{route || 'DexHunter Smart Routing'}</dd></div>{typeof quote.partner_fee === 'number' && <div className="flex justify-between"><dt className="text-slate-500">{copy.partnerFee}</dt><dd className="font-semibold text-slate-200">{quote.partner_fee.toLocaleString('en-US', { maximumFractionDigits: 6 })} ₳</dd></div>}</dl>}
-        {displayedError && <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">{displayedError}</p>}
+        {displayedError && <div role="alert" className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-400"><p>{displayedError}</p>{canRetryQuote && <button type="button" onClick={() => { setError(null); setQuoteRetryKey((key) => key + 1); }} className="mt-2 rounded border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 font-semibold text-cyan-200 hover:bg-cyan-400/20">{language === 'de' ? 'Quote erneut versuchen' : 'Retry quote'}</button>}</div>}
         {txHash && <a href={`https://cardanoscan.io/transaction/${txHash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-300"><CheckCircle2 className="h-4 w-4" />{language === 'de' ? 'Swap gesendet – auf Cardanoscan ansehen' : 'Swap submitted – view on Cardanoscan'}</a>}
-        <button type="button" onClick={wallet.address ? executeSwap : () => setWalletModalOpen(true)} disabled={!quote || asset?.token_id.toLowerCase() !== expectedAssetId || busy || tradeState === 'complete'} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold ${quote && asset?.token_id.toLowerCase() === expectedAssetId && !busy && tradeState !== 'complete' ? 'bg-gradient-to-r from-blue-600 to-cyan-400 text-white' : 'cursor-not-allowed bg-white/5 text-slate-600'}`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : wallet.address ? <Zap className="h-4 w-4" /> : <Wallet className="h-4 w-4" />}{tradeState === 'complete' ? copy.complete : buttonText}</button>
+        <button type="button" onClick={wallet.address ? executeSwap : () => setWalletModalOpen(true)} disabled={!quote || quoteState !== 'ready' || asset?.token_id.toLowerCase() !== expectedAssetId || busy || tradeState === 'complete'} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold ${quote && quoteState === 'ready' && asset?.token_id.toLowerCase() === expectedAssetId && !busy && tradeState !== 'complete' ? 'bg-gradient-to-r from-blue-600 to-cyan-400 text-white' : 'cursor-not-allowed bg-white/5 text-slate-600'}`}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : wallet.address ? <Zap className="h-4 w-4" /> : <Wallet className="h-4 w-4" />}{tradeState === 'complete' ? copy.complete : buttonText}</button>
         <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-slate-600"><Info className="mt-0.5 h-3 w-3 shrink-0" />{copy.disclaimer}</p>
       </div>
       {walletModalOpen && <WalletConnectModal onClose={() => setWalletModalOpen(false)} />}

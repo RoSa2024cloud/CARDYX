@@ -1,11 +1,15 @@
 import type { Pool } from 'pg';
-import { assetKey, calculateAdaTokenPrice, getDexAdapter, minswapV2Adapter, type DexPoolRegistryEntry, type DexUtxoValue } from './dex-adapters';
+import { assetKey, calculateAdaTokenPrice, getDexAdapter, type DexPoolRegistryEntry, type DexUtxoValue } from './dex-adapters';
 
 let lastRunAt: string | null = null;
 let lastRunResult: { discovered: number; pools: number; markets: number; candles: number } | null = null;
 let lastRunError: string | null = null;
 let isRunning = false;
-const MINIMUM_ADA_LIQUIDITY = 500;
+let isPoolDiscoveryRunning = false;
+let lastPoolDiscoveryAt: string | null = null;
+let lastPoolDiscoveryCount = 0;
+let lastPoolDiscoveryError: string | null = null;
+const POOL_OUTPUT_REFRESH_BATCH_SIZE = 5;
 // Pools whose price deviates more than this from the liquidity-weighted median are ignored.
 const PRICE_OUTLIER_TOLERANCE = 0.1;
 const STABLE_OUTLIER_TOLERANCE = 0.03;
@@ -108,97 +112,213 @@ interface RegisteredPoolRow extends PoolRegistryRow {
   enabled: boolean;
 }
 
-interface MinswapPoolCandidate extends PoolUtxoRow {
+interface UnregisteredPoolOutput extends PoolUtxoRow {
+  pool_nft_asset_name: string;
   address: string;
 }
 
-type DatumNode = { constructor?: number; fields?: DatumNode[]; bytes?: string; int?: number | string };
-
-function datumAsset(node: DatumNode | undefined): { policyId: string | null; assetName: string | null } | null {
-  if (node?.constructor !== 0 || !node.fields || node.fields.length !== 2) return null;
-  const policyId = node.fields[0]?.bytes ?? null;
-  const assetName = node.fields[1]?.bytes ?? null;
-  if (policyId === null || assetName === null) return null;
-  return { policyId: policyId || null, assetName: assetName || null };
+interface CatalogPoolAsset {
+  policy_id: string;
+  asset_name: string;
+  market_id: string;
+  decimals: number;
 }
 
-function datumInt(node: DatumNode | undefined): bigint | null {
-  if (node?.int === undefined) return null;
-  try {
-    const value = BigInt(node.int);
-    return value > 0n ? value : null;
-  } catch {
-    return null;
+interface PoolTemplate {
+  dex: string;
+  version: string;
+  pool_nft_policy_id: string;
+}
+
+function discoveredPoolId(template: PoolTemplate, nftAssetName: string, datum: unknown): string | null {
+  if (template.dex === 'sundaeswap' && template.version === 'v1') {
+    return nftAssetName.startsWith('7020') ? `sundaeswap-v1-${nftAssetName.slice(4)}` : null;
   }
+  if (template.dex === 'cswap') {
+    const poolIdentity = (datum as { fields?: Array<{ bytes?: string }> } | null)?.fields?.[7]?.bytes;
+    return poolIdentity ? `cswap-${template.version}-${template.pool_nft_policy_id}-${poolIdentity}` : null;
+  }
+  if (template.dex === 'minswap' && template.version === 'v2') return `minswap-v2-${nftAssetName}`;
+  return `${template.dex}-${template.version}-${template.pool_nft_policy_id}-${nftAssetName}`;
 }
 
-async function discoverMinswapV2Pools(pool: Pool): Promise<number> {
-  const candidates = await pool.query<MinswapPoolCandidate>('SELECT * FROM cardyx.minswap_v2_pool_candidate');
+async function discoverRegisteredProtocolPools(pool: Pool): Promise<number> {
+  const [templates, catalog, registered] = await Promise.all([
+    pool.query<PoolTemplate>(
+      `WITH templates AS (
+         SELECT DISTINCT dex, version, pool_nft_policy_id
+         FROM cardyx.dex_pool_registry
+         WHERE validated_at IS NOT NULL
+       )
+       SELECT templates.dex, templates.version, templates.pool_nft_policy_id
+       FROM templates
+       LEFT JOIN cardyx.dex_pool_discovery_state state
+         ON state.dex = templates.dex
+        AND state.version = templates.version
+        AND state.pool_nft_policy_id = templates.pool_nft_policy_id
+       ORDER BY state.updated_at NULLS FIRST, templates.dex, templates.version, templates.pool_nft_policy_id
+       LIMIT 1`
+    ),
+    pool.query<CatalogPoolAsset>(
+      `SELECT catalog.policy_id, catalog.asset_name, catalog.market_id,
+              coalesce(nullif(metadata.decimals, 0), nullif(catalog.decimals, 0), 0) AS decimals
+       FROM cardyx.asset_catalog catalog
+       JOIN LATERAL (
+         SELECT 1
+         FROM cardyx.asset_market_snapshot price
+         WHERE price.market_id = catalog.market_id
+           AND price.source = 'cardyx-local-dex-indexer'
+           AND price.observed_at >= now() - interval '2 hours'
+           AND price.price_ada > 0
+         ORDER BY price.observed_at DESC
+         LIMIT 1
+       ) local_price ON true
+       LEFT JOIN cardyx.asset_metadata metadata
+         ON metadata.policy_id = catalog.policy_id AND metadata.asset_name = catalog.asset_name
+       WHERE catalog.policy_id IS NOT NULL AND catalog.asset_name IS NOT NULL`
+    ),
+    pool.query<{ dex: string; version: string; pool_nft_policy_id: string; pool_nft_asset_name: string; pool_id: string; tx_out_id: string | null }>(
+      `SELECT dex, version, pool_nft_policy_id, pool_nft_asset_name, pool_id, tx_out_id::text
+       FROM cardyx.dex_pool_registry`
+    ),
+  ]);
+  if (catalog.rows.length === 0) return 0;
+
+  const catalogAssets = new Map(catalog.rows.map((asset) => [`${asset.policy_id}:${asset.asset_name}`, asset]));
+  const identities = JSON.stringify(catalog.rows.map((asset) => ({ policyId: asset.policy_id, assetName: asset.asset_name })));
+  const registeredNfts = new Set(registered.rows.map((row) => `${row.dex}:${row.version}:${row.pool_nft_policy_id}:${row.pool_nft_asset_name}`));
+  const registeredIds = new Set(registered.rows.map((row) => row.pool_id));
+  const registeredOutputs = new Set(registered.rows.flatMap((row) => row.tx_out_id ? [row.tx_out_id] : []));
+  const adaAsset: DexPoolRegistryEntry['assetA'] = { policyId: null, assetName: null, decimals: 6 };
   let discovered = 0;
 
-  for (const candidate of candidates.rows) {
-    const datum = candidate.datum_json as DatumNode;
-    const fields = datum.constructor === 0 ? datum.fields ?? [] : [];
-    if (fields.length < 8) continue;
-
-    const assetA = datumAsset(fields[1]);
-    const assetB = datumAsset(fields[2]);
-    const totalLiquidity = datumInt(fields[3]);
-    const reserveA = datumInt(fields[4]);
-    const reserveB = datumInt(fields[5]);
-    const feeA = datumInt(fields[6]);
-    const feeB = datumInt(fields[7]);
-    if (!assetA || !assetB || !totalLiquidity || !reserveA || !reserveB || !feeA || !feeB) continue;
-    if (feeA < 5n || feeA > 2000n || feeB < 5n || feeB > 2000n) continue;
-
-    const assets = new Map(candidate.assets.map((asset) => [`${asset.policy_id}:${asset.asset_name}`, BigInt(asset.quantity)]));
-    const reserveInUtxo = (asset: { policyId: string | null; assetName: string | null }) =>
-      asset.policyId === null && asset.assetName === null
-        ? BigInt(candidate.lovelace)
-        : assets.get(`${asset.policyId}:${asset.assetName}`) ?? 0n;
-    if (reserveA > reserveInUtxo(assetA) || reserveB > reserveInUtxo(assetB)) continue;
-
-    const lpAsset = candidate.assets.find((asset) =>
-      asset.policy_id === 'f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c'
-      && asset.asset_name !== '4d5350'
-      && BigInt(asset.quantity) > 1n
+  for (const template of templates.rows) {
+    const adapter = getDexAdapter(template.dex, template.version);
+    if (!adapter) continue;
+    const cursorResult = await pool.query<{ last_tx_out_id: string }>(
+      `SELECT last_tx_out_id::text
+       FROM cardyx.dex_pool_discovery_state
+       WHERE dex = $1 AND version = $2 AND pool_nft_policy_id = $3`,
+      [template.dex, template.version, template.pool_nft_policy_id]
     );
-    if (!lpAsset) continue;
+    const cursor = cursorResult.rows[0]?.last_tx_out_id ?? '0';
+    const candidates = await pool.query<UnregisteredPoolOutput>(
+      'SELECT * FROM cardyx.unregistered_dex_pool_outputs_since($1, $2::jsonb, $3::bigint, $4)',
+      [template.pool_nft_policy_id, identities, cursor, 100]
+    );
 
-    const decimals = async (asset: { policyId: string | null; assetName: string | null }) => {
-      if (asset.policyId === null && asset.assetName === null) return 6;
-      const metadata = await pool.query<{ decimals: number | null }>(
-        `SELECT coalesce(m.decimals, c.decimals) AS decimals
-         FROM cardyx.asset_catalog c
-         LEFT JOIN cardyx.asset_metadata m ON m.policy_id = c.policy_id AND m.asset_name = c.asset_name
-         WHERE c.policy_id = $1 AND c.asset_name = $2 LIMIT 1`,
-        [asset.policyId, asset.assetName]
+    for (const candidate of candidates.rows) {
+      if (registeredOutputs.has(candidate.tx_out_id)) continue;
+      const nftKey = `${template.dex}:${template.version}:${template.pool_nft_policy_id}:${candidate.pool_nft_asset_name}`;
+      if (template.dex !== 'cswap' && registeredNfts.has(nftKey)) continue;
+      const poolId = discoveredPoolId(template, candidate.pool_nft_asset_name, candidate.datum_json);
+      if (!poolId || registeredIds.has(poolId)) continue;
+
+      const quantities = new Map(candidate.assets.map((asset) => [`${asset.policy_id}:${asset.asset_name}`, BigInt(asset.quantity)]));
+      const assets = candidate.assets
+        .filter((asset) => BigInt(asset.quantity) > 0n)
+        .map((asset) => ({
+          policyId: asset.policy_id,
+          assetName: asset.asset_name,
+          decimals: catalogAssets.get(`${asset.policy_id}:${asset.asset_name}`)?.decimals ?? 0,
+        }));
+      const pairAssets = [adaAsset, ...assets];
+      let validated: { entry: DexPoolRegistryEntry; decoded: ReturnType<typeof adapter.decodePool> } | null = null;
+
+      for (let first = 0; first < pairAssets.length && !validated; first += 1) {
+        for (let second = 0; second < pairAssets.length && !validated; second += 1) {
+          if (first === second) continue;
+          const assetA = pairAssets[first];
+          const assetB = pairAssets[second];
+          if (!assetA || !assetB) continue;
+          const hasCatalogAsset = (assetA.policyId !== null && assetA.assetName !== null && catalogAssets.has(`${assetA.policyId}:${assetA.assetName}`))
+            || (assetB.policyId !== null && assetB.assetName !== null && catalogAssets.has(`${assetB.policyId}:${assetB.assetName}`));
+          if (!hasCatalogAsset) continue;
+
+          const entry: DexPoolRegistryEntry = {
+            poolId,
+            dex: template.dex,
+            version: template.version,
+            txOutId: candidate.tx_out_id,
+            poolNft: { policyId: template.pool_nft_policy_id, assetName: candidate.pool_nft_asset_name, decimals: 0 },
+            assetA,
+            assetB,
+            enabled: true,
+          };
+          try {
+            const decoded = adapter.decodePool(entry, {
+              lovelace: BigInt(candidate.lovelace),
+              assets: new Map(candidate.assets.map((asset) => [assetKey({ policyId: asset.policy_id, assetName: asset.asset_name, decimals: 0 }), BigInt(asset.quantity)])),
+              datum: candidate.datum_json,
+            });
+            if (decoded && quantities.size > 0) validated = { entry, decoded };
+          } catch { /* Candidate datums are untrusted until their adapter validates them. */ }
+        }
+      }
+
+      if (!validated) continue;
+      const { entry } = validated;
+      const inserted = await pool.query(
+        `INSERT INTO cardyx.dex_pool_registry (
+           pool_id, dex, version, tx_out_id, pool_address,
+           pool_nft_policy_id, pool_nft_asset_name,
+           asset_a_policy_id, asset_a_asset_name, asset_a_decimals,
+           asset_b_policy_id, asset_b_asset_name, asset_b_decimals,
+           enabled, validated_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, now(), now())
+         ON CONFLICT DO NOTHING
+         RETURNING pool_id`,
+        [
+          poolId, template.dex, template.version, candidate.tx_out_id, candidate.address,
+          template.pool_nft_policy_id, candidate.pool_nft_asset_name,
+          entry.assetA.policyId, entry.assetA.assetName, entry.assetA.decimals,
+          entry.assetB.policyId, entry.assetB.assetName, entry.assetB.decimals,
+        ]
       );
-      return metadata.rows[0]?.decimals ?? 0;
-    };
+      if (inserted.rowCount) {
+        discovered += 1;
+        registeredIds.add(poolId);
+        registeredNfts.add(nftKey);
+        registeredOutputs.add(candidate.tx_out_id);
+      }
+    }
 
-    const [assetADecimals, assetBDecimals] = await Promise.all([decimals(assetA), decimals(assetB)]);
+    const nextCursor = candidates.rows.length > 0
+      ? candidates.rows[candidates.rows.length - 1]?.tx_out_id ?? cursor
+      : (await pool.query<{ dex_pool_discovery_tip: string }>('SELECT cardyx.dex_pool_discovery_tip()::text')).rows[0]?.dex_pool_discovery_tip ?? cursor;
     await pool.query(
-      `INSERT INTO cardyx.dex_pool_registry (
-         pool_id, dex, version, tx_out_id, pool_address,
-         pool_nft_policy_id, pool_nft_asset_name,
-         asset_a_policy_id, asset_a_asset_name, asset_a_decimals,
-         asset_b_policy_id, asset_b_asset_name, asset_b_decimals,
-         enabled, validated_at, updated_at
-      ) VALUES ($1, 'minswap', 'v2', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), now())
-       ON CONFLICT DO NOTHING`,
-      [
-        `minswap-v2-${lpAsset.asset_name}`, candidate.tx_out_id, candidate.address,
-        lpAsset.policy_id, lpAsset.asset_name,
-        assetA.policyId, assetA.assetName, assetADecimals,
-        assetB.policyId, assetB.assetName, assetBDecimals,
-        BigInt(candidate.lovelace) >= 500000000,
-      ]
+      `INSERT INTO cardyx.dex_pool_discovery_state (dex, version, pool_nft_policy_id, last_tx_out_id, updated_at)
+       VALUES ($1, $2, $3, $4::bigint, now())
+       ON CONFLICT (dex, version, pool_nft_policy_id) DO UPDATE
+       SET last_tx_out_id = greatest(cardyx.dex_pool_discovery_state.last_tx_out_id, EXCLUDED.last_tx_out_id),
+           updated_at = now()`,
+      [template.dex, template.version, template.pool_nft_policy_id, nextCursor]
     );
-    discovered += 1;
   }
 
   return discovered;
+}
+
+function schedulePoolMaintenance(pool: Pool): void {
+  if (isPoolDiscoveryRunning) return;
+  isPoolDiscoveryRunning = true;
+  void (async () => {
+    const refreshed = await refreshRegisteredPoolOutputs(pool, POOL_OUTPUT_REFRESH_BATCH_SIZE);
+    const discovered = await discoverRegisteredProtocolPools(pool);
+    return { refreshed, discovered };
+  })()
+    .then(({ refreshed, discovered }) => {
+      lastPoolDiscoveryAt = new Date().toISOString();
+      lastPoolDiscoveryCount = discovered;
+      lastPoolDiscoveryError = null;
+      if (discovered > 0 || refreshed > 0) console.log(`CARDYX-Pool-Maintenance: refreshed=${refreshed}, discovered=${discovered}`);
+    })
+    .catch((error: Error) => {
+      lastPoolDiscoveryAt = new Date().toISOString();
+      lastPoolDiscoveryError = error.message;
+      console.error('CARDYX-Pool-Discovery fehlgeschlagen:', error.message);
+    })
+    .finally(() => { isPoolDiscoveryRunning = false; });
 }
 
 async function refreshRegisteredPoolDecimals(pool: Pool): Promise<void> {
@@ -236,7 +356,7 @@ async function refreshRegisteredPoolDecimals(pool: Pool): Promise<void> {
   );
 }
 
-async function refreshRegisteredPoolOutputs(pool: Pool): Promise<number> {
+async function refreshRegisteredPoolOutputs(pool: Pool, limit: number): Promise<number> {
   const registered = await pool.query<RegisteredPoolRow>(
     `SELECT pool_id, dex, version, tx_out_id, pool_address,
             asset_a_policy_id, asset_a_asset_name, asset_a_decimals,
@@ -244,51 +364,57 @@ async function refreshRegisteredPoolOutputs(pool: Pool): Promise<number> {
             pool_nft_policy_id, pool_nft_asset_name, enabled
      FROM cardyx.dex_pool_registry
      WHERE validated_at IS NOT NULL
-     ORDER BY updated_at ASC`
+      ORDER BY updated_at ASC
+      LIMIT $1`,
+     [limit]
   );
   let refreshed = 0;
 
   for (const row of registered.rows) {
-    const adapter = getDexAdapter(row.dex, row.version);
-    if (!adapter) continue;
-    const candidates = await pool.query<PoolUtxoRow & { tx_out_id: string }>(
-      `SELECT tx_out_id::text, lovelace::text, datum_json, assets
-       FROM cardyx.find_registered_pool_outputs($1, $2, $3, $4, $5)`,
-      [row.pool_id, row.pool_nft_policy_id, row.pool_nft_asset_name, row.tx_out_id, row.pool_address]
-    );
+    try {
+      const adapter = getDexAdapter(row.dex, row.version);
+      if (!adapter) continue;
+      const candidates = await pool.query<PoolUtxoRow & { tx_out_id: string }>(
+        `SELECT tx_out_id::text, lovelace::text, datum_json, assets
+         FROM cardyx.find_registered_pool_outputs($1, $2, $3, $4, $5)`,
+        [row.pool_id, row.pool_nft_policy_id, row.pool_nft_asset_name, row.tx_out_id, row.pool_address]
+      );
 
-    for (const candidate of candidates.rows) {
-      const decoded = adapter.decodePool(
-        {
-          poolId: row.pool_id,
-          dex: row.dex,
-          version: row.version,
-          txOutId: candidate.tx_out_id,
-          poolNft: { policyId: row.pool_nft_policy_id, assetName: row.pool_nft_asset_name, decimals: 0 },
-          assetA: { policyId: row.asset_a_policy_id, assetName: row.asset_a_asset_name, decimals: row.asset_a_decimals },
-          assetB: { policyId: row.asset_b_policy_id, assetName: row.asset_b_asset_name, decimals: row.asset_b_decimals },
-          enabled: row.enabled,
-        },
-        {
-          lovelace: BigInt(candidate.lovelace),
-          assets: new Map(candidate.assets.map((asset) => [assetKey({ policyId: asset.policy_id, assetName: asset.asset_name, decimals: 0 }), BigInt(asset.quantity)])),
-          datum: candidate.datum_json,
-        }
-      );
-      if (!decoded) continue;
-      if (candidate.tx_out_id === row.tx_out_id) break;
-      await pool.query(
-        `UPDATE cardyx.dex_pool_registry
-         SET tx_out_id = $2, validated_at = now(), updated_at = now()
-         WHERE pool_id = $1
-           AND NOT EXISTS (
-             SELECT 1 FROM cardyx.dex_pool_registry other
-             WHERE other.pool_id <> $1 AND other.tx_out_id = $2
-           )`,
-        [row.pool_id, candidate.tx_out_id]
-      );
-      refreshed += 1;
-      break;
+      for (const candidate of candidates.rows) {
+        const decoded = adapter.decodePool(
+          {
+            poolId: row.pool_id,
+            dex: row.dex,
+            version: row.version,
+            txOutId: candidate.tx_out_id,
+            poolNft: { policyId: row.pool_nft_policy_id, assetName: row.pool_nft_asset_name, decimals: 0 },
+            assetA: { policyId: row.asset_a_policy_id, assetName: row.asset_a_asset_name, decimals: row.asset_a_decimals },
+            assetB: { policyId: row.asset_b_policy_id, assetName: row.asset_b_asset_name, decimals: row.asset_b_decimals },
+            enabled: row.enabled,
+          },
+          {
+            lovelace: BigInt(candidate.lovelace),
+            assets: new Map(candidate.assets.map((asset) => [assetKey({ policyId: asset.policy_id, assetName: asset.asset_name, decimals: 0 }), BigInt(asset.quantity)])),
+            datum: candidate.datum_json,
+          }
+        );
+        if (!decoded) continue;
+        if (candidate.tx_out_id === row.tx_out_id) break;
+        await pool.query(
+          `UPDATE cardyx.dex_pool_registry
+           SET tx_out_id = $2, validated_at = now(), updated_at = now()
+           WHERE pool_id = $1
+             AND NOT EXISTS (
+               SELECT 1 FROM cardyx.dex_pool_registry other
+               WHERE other.pool_id <> $1 AND other.tx_out_id = $2
+             )`,
+          [row.pool_id, candidate.tx_out_id]
+        );
+        refreshed += 1;
+        break;
+      }
+    } finally {
+      await pool.query('UPDATE cardyx.dex_pool_registry SET updated_at = now() WHERE pool_id = $1', [row.pool_id]);
     }
   }
 
@@ -331,12 +457,11 @@ async function indexRegisteredPools(pool: Pool): Promise<number> {
     const marketId = catalog.rows[0]?.market_id;
     if (!marketId) continue;
 
-    const priceEnabled = price.reserveAda >= MINIMUM_ADA_LIQUIDITY;
     await pool.query(
       `UPDATE cardyx.dex_pool_registry
-       SET enabled = $2, updated_at = now()
+       SET enabled = true, updated_at = now()
        WHERE pool_id = $1`,
-      [decoded.poolId, priceEnabled]
+      [decoded.poolId]
     );
 
     await pool.query(
@@ -426,10 +551,9 @@ export async function runDexIndexerOnce(pool: Pool): Promise<{ discovered: numbe
   if (isRunning) return lastRunResult ?? { discovered: 0, pools: 0, markets: 0, candles: 0 };
   isRunning = true;
   try {
-    const discovered = await discoverMinswapV2Pools(pool);
+    const discovered = 0;
     await refreshRegisteredPoolDecimals(pool);
     await pool.query('SELECT cardyx.refresh_snek_pool_output()');
-    await refreshRegisteredPoolOutputs(pool);
     await indexRegisteredPools(pool);
     await refreshLocalAdaUsd(pool).catch((error: Error) => console.warn('Lokaler ADA/USD-Index fehlgeschlagen:', error.message));
     const result = await pool.query<{ market_id: string }>(
@@ -531,6 +655,7 @@ export async function runDexIndexerOnce(pool: Pool): Promise<{ discovered: numbe
     localDexTvlAda = reserveAda > 0 ? reserveAda * 2 : null;
 
     const candles = await buildLocalCandles(pool);
+    schedulePoolMaintenance(pool);
     lastRunAt = new Date().toISOString();
     lastRunResult = {
       discovered,
@@ -557,5 +682,12 @@ export function startDexIndexer(pool: Pool, intervalMs = 30_000): void {
 }
 
 export function getDexIndexerStatus() {
-  return { lastRunAt, lastRunResult, lastRunError, isRunning, mode: 'cardyx-local-dex-indexer' };
+  return {
+    lastRunAt,
+    lastRunResult,
+    lastRunError,
+    isRunning,
+    poolDiscovery: { isRunning: isPoolDiscoveryRunning, lastRunAt: lastPoolDiscoveryAt, lastDiscovered: lastPoolDiscoveryCount, lastError: lastPoolDiscoveryError },
+    mode: 'cardyx-local-dex-indexer',
+  };
 }

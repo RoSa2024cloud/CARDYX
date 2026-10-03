@@ -103,6 +103,32 @@
   min-width: 0;
 }
 
+.chartRoot {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.chartBody {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.chartPlot {
+  position: relative;
+  min-width: 0;
+  min-height: 300px;
+  flex: 1;
+}
+
+@media (min-width: 640px) {
+  .chartPlot { min-height: 380px; }
+}
+
 .placeholder {
   display: flex;
   align-items: center;
@@ -214,6 +240,7 @@
 
 .fearPanel {
   display: flex;
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
@@ -227,6 +254,55 @@
   background-size: 100% 100%, 300% 300%;
   box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 12px rgba(118, 79, 231, 0.25);
   animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+.fearMarketPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 174px;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  container-type: inline-size;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background:
+    linear-gradient(150deg, #0a1830, #0d1128 65%, #15102b) padding-box,
+    linear-gradient(115deg, #2df4ff, #2676ff 25%, #a351ef 48%, #ff4bac 70%, #2df4ff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  box-shadow: inset 0 0 0 1px rgba(205, 232, 255, 0.17), 0 0 14px rgba(118, 79, 231, 0.25);
+  animation: glassEdge 18s ease-in-out infinite alternate;
+}
+
+@media (min-width: 1024px) {
+  .fearMarketCompact {
+    height: 168px;
+    min-height: 0;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+
+  .fearMarketCompact .fearMarketGauge {
+    width: 92px;
+  }
+
+  .fearMarketCompact .fearHint {
+    min-height: 36px;
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  .fearMarketCompact .fearHint > :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.fearMarketGauge {
+  position: relative;
+  width: clamp(120px, 15cqi, 170px);
+  flex-shrink: 0;
 }
 
 .fearIcon {
@@ -249,12 +325,18 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 6px;
+  gap: clamp(7px, 2.2cqi, 9px);
+  min-height: 48px;
   border: 1px solid rgba(118, 162, 255, 0.28);
   border-radius: 6px;
-  padding: 4px 6px;
+  padding: clamp(6px, 2cqi, 9px);
   background: rgba(8, 16, 36, 0.75);
-  font-size: 9px;
+  font-size: clamp(11px, 4cqi, 13px);
+}
+
+.fearHint > :global(svg) {
+  width: clamp(16px, 5.2cqi, 19px);
+  height: clamp(16px, 5.2cqi, 19px);
 }
 
 .chartPane > :global(section) {
@@ -311,6 +393,7 @@
   .activeNav,
   .walletGlass,
   .fearPanel,
+  .fearMarketPanel,
   .quickActions,
   .placeholder {
     animation: none;
@@ -342,7 +425,12 @@
     border-radius: 6px;
   }
 
-  .chartPane > :global(section) > :global(div:nth-last-child(2)) {
+  .chartPane > :global(section) > .chartBody {
+    height: 100%;
+    flex: 1;
+  }
+
+  .chartPane > :global(section) > .chartBody > .chartPlot {
     flex: 1;
     min-height: 0;
     height: auto !important;
@@ -417,16 +505,16 @@
     grid-template-rows: minmax(0, 1fr) 155px;
   }
 
-  .chartPane > :global(section) > :global(div:first-child) {
+  .chartPane > :global(section) > .chartBody > :global(div:first-child) {
     padding: 6px 10px;
   }
 
-  .chartPane > :global(section) > :global(div:nth-child(2)),
-  .chartPane > :global(section) > :global(div:nth-child(3)) {
+  .chartPane > :global(section) > .chartBody > :global(div:nth-child(2)),
+  .chartPane > :global(section) > .chartBody > :global(div:nth-child(3)) {
     padding: 4px 10px;
   }
 
-  .chartPane > :global(section) > :global(div:last-child) {
+  .chartPane > :global(section) > .chartBody > :global(div:last-child) {
     padding: 4px 10px;
   }
 }

@@ -24,13 +24,20 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@cardano-foundation/cardano-verify-datasignature": "^1.0.11",
+    "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
+    "@emurgo/cardano-serialization-lib-nodejs": "^17.0.0",
     "@prisma/client": "^7.10.0",
     "@prisma/orm-postgres": "^8.0.0-rc.8",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "pg": "^8.23.0",
+    "rss-parser": "^3.13.0",
     "tsx": "^4.23.12"
   }
 }

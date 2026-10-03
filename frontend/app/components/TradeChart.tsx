@@ -12,10 +12,20 @@ import {
 import { Activity, BarChart3, Loader2 } from 'lucide-react';
 import { useCurrency } from './CurrencyProvider';
 import { useLanguage } from './LanguageProvider';
+import styles from '../trade/terminal.module.css';
 import { API_URL } from '../lib/api';
 import { formatAdaPrice, formatChange, formatUsdPrice } from '../lib/tokens';
 
-type Range = '4H' | '1D' | '7D';
+type Range = '15m' | '1h' | '4h' | '1D' | '1W' | '1Y';
+
+const RANGE_OPTIONS: { value: Range; label: string; bucket: string }[] = [
+  { value: '15m', label: '15m', bucket: '1 minute' },
+  { value: '1h', label: '1h', bucket: '5 minutes' },
+  { value: '4h', label: '4h', bucket: '15 minutes' },
+  { value: '1D', label: '1D', bucket: '1 hour' },
+  { value: '1W', label: '1W', bucket: '1 hour' },
+  { value: '1Y', label: '1Y', bucket: '1 day' },
+];
 
 interface Candle {
   time: UTCTimestamp;
@@ -56,13 +66,16 @@ function calculateRsi(candles: Candle[], period = 14): number | null {
 
 function normalizeCandles(value: unknown): Candle[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((entry: any) => {
-    const timestamp = Number(entry?.time ?? entry?.unix ?? (entry?.timestamp ? Date.parse(entry.timestamp) / 1000 : NaN));
-    const open = Number(entry?.open);
-    const high = Number(entry?.high);
-    const low = Number(entry?.low);
-    const close = Number(entry?.close);
-    const volume = Number(entry?.volume ?? entry?.vol ?? 0);
+  return value.flatMap((entry: unknown) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const candle = entry as Record<string, unknown>;
+    const timestampValue = candle.time ?? candle.unix ?? candle.timestamp;
+    const timestamp = Number(timestampValue instanceof Date ? timestampValue.getTime() / 1000 : typeof timestampValue === 'string' && Number.isNaN(Number(timestampValue)) ? Date.parse(timestampValue) / 1000 : timestampValue);
+    const open = Number(candle.open);
+    const high = Number(candle.high);
+    const low = Number(candle.low);
+    const close = Number(candle.close);
+    const volume = Number(candle.volume ?? candle.vol ?? 0);
     if (![timestamp, open, high, low, close].every(Number.isFinite) || timestamp <= 0 || Math.max(open, high, low, close) <= 0) return [];
     const seconds = timestamp > 1_000_000_000_000 ? Math.floor(timestamp / 1000) : Math.floor(timestamp);
     return [{ time: seconds as UTCTimestamp, open, high, low, close, volume: Number.isFinite(volume) ? volume : 0 }];
@@ -84,39 +97,29 @@ export default function TradeChart({ marketTokenId, ticker, adaPriceUsd }: Trade
   const [hoverTime, setHoverTime] = useState<UTCTimestamp | null>(null);
 
   useEffect(() => {
-    if (!marketTokenId) {
-      setCandles([]);
-      setLoading(false);
-      return;
-    }
+    if (!marketTokenId) return;
 
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError(false);
       let candles: Candle[] = [];
-      if (marketTokenId) {
-        try {
-          const response = await fetch(`${API_URL}/api/market/chart/${encodeURIComponent(marketTokenId)}?days=7`);
-          const json = await response.json();
-          if (response.ok && json.success) {
-            candles = normalizeCandles(json.data?.candles);
-            if (range !== '7D') {
-              const hours = range === '4H' ? 4 : 24;
-              const cutoff = Math.floor(Date.now() / 1000) - hours * 60 * 60;
-              candles = candles.filter((candle) => candle.time >= cutoff);
-            }
-            if (!cancelled && candles.length > 0) {
-              setCandles(candles);
-              setSourceLabel('CARDYX local history');
-              setCandleCurrency('ADA');
-              setLoading(false);
-              return;
-            }
+      const rangeOption = RANGE_OPTIONS.find((option) => option.value === range) ?? RANGE_OPTIONS[3];
+      try {
+        const response = await fetch(`${API_URL}/api/market/chart/${encodeURIComponent(marketTokenId)}?range=${range}`);
+        const json = await response.json();
+        if (response.ok && json.success) {
+          candles = normalizeCandles(json.data?.candles);
+          if (!cancelled && candles.length > 0) {
+            setCandles(candles);
+            setSourceLabel('CARDYX local price index');
+            setCandleCurrency('ADA');
+            setLoading(false);
+            return;
           }
-        } catch {
-          // Show the unavailable state when local history is missing.
         }
+      } catch {
+        // Keep the unavailable state when local history is missing.
       }
       if (!cancelled) {
         setCandles([]);
@@ -213,15 +216,19 @@ export default function TradeChart({ marketTokenId, ticker, adaPriceUsd }: Trade
   }, [convertedCandles, showMa20, showMa50]);
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-md border border-white/10 bg-[#070a12] shadow-[0_16px_45px_rgba(0,0,0,0.16)]">
+    <section className={`min-w-0 min-h-0 overflow-hidden rounded-md border border-white/10 bg-[#070a12] shadow-[0_16px_45px_rgba(0,0,0,0.16)] ${styles.chartRoot}`}>
+      <div className={styles.chartBody}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-8 w-8 items-center justify-center rounded bg-cyan-400/10 text-cyan-300"><BarChart3 className="h-4 w-4" /></span>
           <div className="min-w-0"><p className="truncate text-sm font-bold text-white">{ticker} / ADA <span className="ml-2 text-[10px] font-normal text-slate-500">{range}</span></p><p className="text-[10px] text-slate-500">{sourceLabel}</p></div>
         </div>
-        <div className="flex gap-1 rounded border border-white/10 bg-white/[0.03] p-0.5" role="group" aria-label={language === 'de' ? 'Chart-Zeitraum' : 'Chart range'}>
-          {(['4H', '1D', '7D'] as const).map((item) => <button key={item} type="button" aria-pressed={range === item} onClick={() => setRange(item)} className={`min-w-10 rounded px-2.5 py-1 text-[11px] font-bold ${range === item ? 'bg-cyan-400/20 text-cyan-100' : 'text-slate-500 hover:text-white'}`}>{item}</button>)}
-        </div>
+        <label className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="sr-only">{language === 'de' ? 'Chart-Zeitraum' : 'Chart range'}</span>
+          <select value={range} onChange={(event) => setRange(event.target.value as Range)} className="h-7 rounded border border-white/10 bg-[#0b1020] px-2 text-[11px] font-bold text-slate-200 outline-none focus:border-cyan-400/50">
+            {RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
       </div>
       <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 px-4 py-2 font-mono text-[10px] text-slate-400">
         <span className="font-semibold text-slate-200">{ticker}/{currency}</span>
@@ -234,11 +241,14 @@ export default function TradeChart({ marketTokenId, ticker, adaPriceUsd }: Trade
         <span className="ml-auto text-[10px] text-slate-500">RSI(14) <strong className={`${rsi !== null && rsi >= 70 ? 'text-red-300' : rsi !== null && rsi <= 30 ? 'text-green-300' : 'text-slate-300'}`}>{rsi === null ? '—' : rsi.toFixed(1)}</strong></span>
         {latest && <span className={`text-[10px] font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatPrice(latest.close)} · {formatChange(change)}</span>}
       </div>
-      {loading ? <div className="flex h-[300px] items-center justify-center gap-2 text-sm text-slate-500 sm:h-[380px]"><Loader2 className="h-4 w-4 animate-spin" />{language === 'de' ? 'Chart wird geladen…' : 'Loading chart…'}</div>
-        : conversionUnavailable ? <div className="flex h-[300px] items-center justify-center px-6 text-center text-sm text-slate-500 sm:h-[380px]">{language === 'de' ? 'ADA/USD-Umrechnung derzeit nicht verfügbar.' : 'ADA/USD conversion is currently unavailable.'}</div>
-        : error ? <div className="flex h-[300px] items-center justify-center px-6 text-center text-sm text-slate-500 sm:h-[380px]">{language === 'de' ? 'Keine lokale Preishistorie für dieses Handelspaar verfügbar.' : 'No local price history is available for this pair.'}</div>
-          : <div ref={chartElement} className="h-[300px] w-full sm:h-[380px]" />}
+      <div className={styles.chartPlot}>
+        {loading ? <div className="flex h-full min-h-[240px] items-center justify-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />{language === 'de' ? 'Chart wird geladen…' : 'Loading chart…'}</div>
+          : conversionUnavailable ? <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-slate-500">{language === 'de' ? 'ADA/USD-Umrechnung derzeit nicht verfügbar.' : 'ADA/USD conversion is currently unavailable.'}</div>
+          : error ? <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-slate-500">{language === 'de' ? 'Keine lokale Preishistorie für dieses Intervall verfügbar.' : 'No local price history is available for this range.'}</div>
+            : <div ref={chartElement} className="absolute inset-0" />}
+      </div>
       <div className="flex items-center justify-end border-t border-white/5 px-4 py-2 text-[10px] text-slate-500">{currency}/{ticker}</div>
+      </div>
     </section>
   );
 }

@@ -2,12 +2,6 @@ ALTER TABLE cardyx.asset_catalog
   ADD COLUMN IF NOT EXISTS fingerprint text,
   ADD COLUMN IF NOT EXISTS decimals integer;
 
-UPDATE cardyx.asset_catalog
-SET decimals = 6,
-    updated_at = now()
-WHERE market_id IN ('ascend', 'anzens-usda', 'strike-2', 'atlas-2', 'titan-3')
-  AND decimals IS DISTINCT FROM 6;
-
 CREATE INDEX IF NOT EXISTS asset_catalog_fingerprint_idx
   ON cardyx.asset_catalog (fingerprint);
 

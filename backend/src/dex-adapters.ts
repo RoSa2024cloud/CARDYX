@@ -450,6 +450,39 @@ export const cswapAdapter: DexProtocolAdapter = {
   },
 };
 
+const vyfiPoolNftPolicies = new Set([
+  'fe87ca564b467aa6de634aad76368ae6219fd4342b5a2da8a3ded881',
+  'c285d6d7e61163b7f7a918f28e450e37d55dc684450d87b96750d8db',
+  'fe496bc40d12f5032159a76b0cc4ff1f74e09e34f86bed95357916c8',
+  'f7f9777979a2a96777823f149e6696954f43967fc56cfc7095a33f98',
+]);
+
+export const vyfiV1Adapter: DexProtocolAdapter = {
+  dex: 'vyfi',
+  version: 'v1',
+  decodePool(entry, utxo) {
+    if (!entry.poolNft.policyId || !vyfiPoolNftPolicies.has(entry.poolNft.policyId) || entry.poolNft.assetName !== '') return null;
+    if (utxo.assets.get(assetKey(entry.poolNft)) !== 1n) return null;
+
+    const datum = utxo.datum as DatumNode | null;
+    const fields = datum?.constructor === 0 ? datum.fields ?? [] : [];
+    if (fields.length !== 3) return null;
+    const state = fields.map(datumInteger);
+    const liquidity = state[0];
+    const stateValueA = state[1];
+    const stateValueB = state[2];
+    if (liquidity === null || liquidity === undefined || liquidity <= 0n) return null;
+    if (stateValueA === null || stateValueA === undefined || stateValueA < 0n) return null;
+    if (stateValueB === null || stateValueB === undefined || stateValueB < 0n) return null;
+
+    const reserveA = reserveFor(entry.assetA, utxo);
+    const reserveB = reserveFor(entry.assetB, utxo);
+    if (reserveA === null || reserveB === null || reserveA <= 0n || reserveB <= 0n) return null;
+
+    return { poolId: entry.poolId, assetA: entry.assetA, assetB: entry.assetB, reserveA, reserveB, liquidity };
+  },
+};
+
 const dexAdapters = new Map<string, DexProtocolAdapter>([
   [`${minswapV1Adapter.dex}:${minswapV1Adapter.version}`, minswapV1Adapter],
   [`${minswapV2Adapter.dex}:${minswapV2Adapter.version}`, minswapV2Adapter],
@@ -462,6 +495,7 @@ const dexAdapters = new Map<string, DexProtocolAdapter>([
   [`${splashFeeSwitchAdapter.dex}:${splashFeeSwitchAdapter.version}`, splashFeeSwitchAdapter],
   [`${splashRoyaltyV1Adapter.dex}:${splashRoyaltyV1Adapter.version}`, splashRoyaltyV1Adapter],
   [`${cswapAdapter.dex}:${cswapAdapter.version}`, cswapAdapter],
+  [`${vyfiV1Adapter.dex}:${vyfiV1Adapter.version}`, vyfiV1Adapter],
 ]);
 
 export function getDexAdapter(dex: string, version: string): DexProtocolAdapter | null {

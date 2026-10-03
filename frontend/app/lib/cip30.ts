@@ -16,8 +16,10 @@ export interface Cip30Api {
   getUsedAddresses(): Promise<string[]>;
   getUnusedAddresses(): Promise<string[]>;
   getChangeAddress(): Promise<string>;
+  getRewardAddresses?(): Promise<string[]>;
   getBalance(): Promise<string>; // CBOR-hex
   getNetworkId(): Promise<number>;
+  signData?(address: string, payload: string): Promise<{ signature: string; key: string }>;
   signTx(tx: string, partialSign?: boolean): Promise<string>;
   submitTx(tx: string): Promise<string>;
 }

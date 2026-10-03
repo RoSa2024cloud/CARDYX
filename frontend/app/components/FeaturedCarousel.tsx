@@ -58,11 +58,11 @@ export default function FeaturedCarousel() {
   const { language } = useLanguage();
   return (
     <section aria-label={language === 'de' ? 'Highlights' : 'Highlights'} className="pt-2">
-      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
+      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:px-0">
         {BANNERS.map((banner) => (
           <article
             key={banner.title}
-            className={`group relative h-36 w-[300px] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br sm:w-[340px] ${banner.gradient} ${banner.border} transition-colors`}
+            className={`group relative h-36 w-[300px] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br sm:w-[340px] lg:w-auto ${banner.gradient} ${banner.border} transition-colors`}
           >
             <banner.icon className="absolute -right-4 -top-4 h-28 w-28 text-white/5 transition-transform duration-300 group-hover:scale-110" />
             <span className="absolute right-4 top-4 rounded-full border border-white/10 bg-[#05070d]/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">

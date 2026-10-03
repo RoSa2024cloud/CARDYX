@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { normalizedOnchainSupply, tokenSupplyValuation } from './token-supply.service';
+
+test('on-chain quantities retain exact precision and use known decimals', () => {
+  assert.deepEqual(normalizedOnchainSupply('24000000000000000', 6), { value: 24_000_000_000, exact: '24000000000' });
+  assert.equal(normalizedOnchainSupply('24000000000000001', 6)?.exact, '24000000000.000001');
+  assert.equal(normalizedOnchainSupply('1000000000000001', 0)?.exact, '1000000000000001');
+  assert.equal(normalizedOnchainSupply('123456789', 9)?.exact, '0.123456789');
+  assert.equal(normalizedOnchainSupply('0', 6)?.value, 0);
+  assert.equal(normalizedOnchainSupply('10', null), null);
+  assert.equal(normalizedOnchainSupply('-1', 0), null);
+  assert.equal(normalizedOnchainSupply(Number('24000000000000001'), 6), null);
+});
+
+test('valuations distinguish issued supply, proven circulation and maximum supply', () => {
+  const base = { rawQuantity: '1000000', decimals: 0, priceAda: 0.01, adaPriceUsd: 0.25 };
+  const unknown = tokenSupplyValuation(base);
+  assert.equal(unknown.totalSupply, 1_000_000);
+  assert.equal(unknown.onchainSupply, 1_000_000);
+  assert.equal(unknown.circulatingSupply, null);
+  assert.equal(unknown.marketCapAda, 10_000);
+  assert.equal(unknown.marketCapBasis, 'on-chain-supply-estimate');
+  assert.equal(unknown.maxSupply, null);
+  assert.equal(unknown.fdvAda, 10_000);
+  assert.equal(unknown.fdvBasis, 'on-chain-supply');
+  const known = tokenSupplyValuation({ ...base, circulatingSupply: 500_000, maxSupply: 2_000_000 });
+  assert.equal(known.marketCapAda, 5_000);
+  assert.equal(known.marketCapBasis, 'verified-circulating-supply');
+  assert.equal(known.marketCapUsd, 1_250);
+  assert.equal(known.fdvAda, 20_000);
+  assert.equal(known.fdvBasis, 'maximum-supply');
+  assert.equal(tokenSupplyValuation({ ...base, circulatingSupply: 1_000_001, maxSupply: 999_999 }).circulatingSupply, null);
+  assert.equal(tokenSupplyValuation({ ...base, priceAda: 0 }).fdvAda, null);
+  const providerTotal = tokenSupplyValuation({ ...base, providerTotalSupply: 2_000_000, circulatingSupply: 1_500_000 });
+  assert.equal(providerTotal.totalSupply, 2_000_000);
+  assert.equal(providerTotal.marketCapAda, 15_000);
+  assert.equal(providerTotal.marketCapBasis, 'verified-circulating-supply');
+  assert.equal(providerTotal.fdvAda, 20_000);
+  assert.equal(providerTotal.fdvBasis, 'provider-total-supply');
+  const providerWithoutFloat = tokenSupplyValuation({ ...base, providerTotalSupply: 2_000_000 });
+  assert.equal(providerWithoutFloat.totalSupply, 2_000_000);
+  assert.equal(providerWithoutFloat.marketCapAda, 10_000);
+  assert.equal(providerWithoutFloat.marketCapBasis, 'on-chain-supply-estimate');
+  assert.equal(providerWithoutFloat.circulatingSupply, null);
+  const contradictoryProvider = tokenSupplyValuation({ ...base, providerTotalSupply: 500_000, circulatingSupply: 400_000 });
+  assert.equal(contradictoryProvider.totalSupply, 1_000_000);
+  assert.equal(contradictoryProvider.circulatingSupply, 400_000);
+  assert.equal(contradictoryProvider.fdvAda, 10_000);
+  assert.equal(contradictoryProvider.fdvBasis, 'on-chain-supply');
+  const missingPrecision = tokenSupplyValuation({ ...base, decimals: null, providerTotalSupply: 2_000_000, circulatingSupply: 1_000_000 });
+  assert.equal(missingPrecision.totalSupply, 2_000_000);
+  assert.equal(missingPrecision.marketCapAda, 10_000);
+});
