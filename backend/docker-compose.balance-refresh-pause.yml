@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      RUN_BALANCE_REFRESH: "false"

@@ -251,10 +251,13 @@ export async function runLocalIndexerOnce(pool: Pool): Promise<{ catalog: number
     const registry = await enrichFromTokenRegistry(pool, 100);
 
     runPhase = 'balances';
-    const balanceResult = await pool.query<{ refreshed: string }>(
-      'SELECT cardyx.refresh_asset_balances()::text AS refreshed'
-    );
-    const balances = Number(balanceResult.rows[0]?.refreshed ?? 0);
+    let balances = 0;
+    if (process.env.RUN_BALANCE_REFRESH !== 'false') {
+      const balanceResult = await pool.query<{ refreshed: string }>(
+        'SELECT cardyx.refresh_asset_balances()::text AS refreshed'
+      );
+      balances = Number(balanceResult.rows[0]?.refreshed ?? 0);
+    }
     await pool.query(
       `INSERT INTO cardyx.asset_holder_history (policy_id, asset_name, day, holder_count, utxo_count, circulating_quantity, recorded_at)
        SELECT policy_id, asset_name, (now() AT TIME ZONE 'UTC')::date, holder_count, utxo_count, circulating_quantity, now()
