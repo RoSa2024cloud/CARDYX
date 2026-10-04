@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      RUN_POOL_STATE_INDEXER: "false"

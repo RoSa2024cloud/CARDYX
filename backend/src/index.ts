@@ -30,6 +30,7 @@ import { getTokenSentimentIndexerStatus, requestTokenSentimentRefresh, startToke
 import { createSubscriptionRouter, requireFeatureAccess } from './subscription.service';
 import { createAdminRouter } from './admin.service';
 import { readApplicationConfiguration } from './application-config.service';
+import { createOuraEventsRouter, startOuraJournalCanonicalizer } from './oura-events.service';
 import cors from 'cors';
 
 const { Pool } = pg;
@@ -202,6 +203,7 @@ const pool = new Pool({
   ssl: useDatabaseSsl ? { rejectUnauthorized: false } : false,
 });
 
+app.use('/api/internal/oura/events', express.json({ limit: '2mb' }));
 app.use(express.json());
 
 // CORS: Online nur die Frontend-Domain erlauben, lokal alles offen.
@@ -221,6 +223,9 @@ app.use(
         }
   )
 );
+
+app.use('/api/internal/oura/events', createOuraEventsRouter(pool));
+if (process.env.CARDYX_OURA_WEBHOOK_TOKEN) startOuraJournalCanonicalizer(pool);
 
 app.use('/api/subscription', createSubscriptionRouter(pool));
 app.use('/api/admin', createAdminRouter(pool, () => ({
@@ -1709,18 +1714,28 @@ app.get('/api/market/chart/:id', async (req, res) => {
   }
 });
 
-const localTradeCache = new Map<string, { expiresAt: number; trades: unknown[] }>();
+const localTradeCache = new Map<string, { expiresAt: number; trades: unknown[]; source: string }>();
 
 app.get('/api/market/trades/:id', async (req, res) => {
   try {
     const cached = localTradeCache.get(req.params.id);
     if (cached && cached.expiresAt > Date.now()) {
-      return res.json({ success: true, data: { trades: cached.trades, source: 'cardyx-local-dex-indexer' } });
+      return res.json({ success: true, data: { trades: cached.trades, source: cached.source } });
     }
     const market = await getLocalMarketFeed();
     const token = market?.tokens.find((entry: MarketToken) => entry.id === req.params.id);
     if (!token?.policyId || !token.assetName) return res.status(404).json({ success: false, error: 'Token nicht im lokalen Katalog.' });
     if (!token.activePools?.length) return res.json({ success: true, data: { trades: [], source: 'cardyx-local-dex-indexer' } });
+
+    const projected = await pool.query({
+      text: 'SELECT * FROM cardyx.oura_confirmed_pool_trades($1, $2)',
+      values: [token.policyId, token.assetName],
+    });
+    if (projected.rows.length > 0) {
+      if (localTradeCache.size >= 100) localTradeCache.clear();
+      localTradeCache.set(req.params.id, { expiresAt: Date.now() + 2_000, trades: projected.rows, source: 'cardyx-oura-db-sync' });
+      return res.json({ success: true, data: { trades: projected.rows, source: 'cardyx-oura-db-sync' } });
+    }
 
     const indexed = await pool.query(
       `SELECT state.tx_hash, state.block_time AS occurred_at, registry.dex, registry.version,
@@ -1735,7 +1750,7 @@ app.get('/api/market/trades/:id', async (req, res) => {
 
     if (indexed.rows.length > 0) {
       if (localTradeCache.size >= 100) localTradeCache.clear();
-      localTradeCache.set(req.params.id, { expiresAt: Date.now() + 30_000, trades: indexed.rows });
+      localTradeCache.set(req.params.id, { expiresAt: Date.now() + 2_000, trades: indexed.rows, source: 'cardyx-pool-state-indexer' });
       return res.json({ success: true, data: { trades: indexed.rows, source: 'cardyx-pool-state-indexer' } });
     }
 
@@ -1744,7 +1759,7 @@ app.get('/api/market/trades/:id', async (req, res) => {
       values: [token.policyId, token.assetName],
     });
     if (localTradeCache.size >= 100) localTradeCache.clear();
-    localTradeCache.set(req.params.id, { expiresAt: Date.now() + 60_000, trades: result.rows });
+    localTradeCache.set(req.params.id, { expiresAt: Date.now() + 2_000, trades: result.rows, source: 'cardyx-local-dex-indexer' });
     res.json({ success: true, data: { trades: result.rows, source: 'cardyx-local-dex-indexer' } });
   } catch (error: any) {
     console.error(`Lokale Trades für ${req.params.id} nicht verfügbar:`, error.message);

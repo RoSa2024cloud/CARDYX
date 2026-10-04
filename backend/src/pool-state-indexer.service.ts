@@ -56,6 +56,15 @@ export async function runPoolStateIndexerOnce(pool: Pool): Promise<typeof lastRu
   if (isRunning) return lastRunResult;
   isRunning = true;
   try {
+    const reconciliation = await pool.query<{ pool_states_deleted: string; pair_states_deleted: string }>(
+      'SELECT * FROM cardyx.reconcile_dex_pool_state_rollbacks()'
+    );
+    const poolStatesDeleted = Number(reconciliation.rows[0]?.pool_states_deleted ?? 0);
+    const pairStatesDeleted = Number(reconciliation.rows[0]?.pair_states_deleted ?? 0);
+    if (poolStatesDeleted > 0 || pairStatesDeleted > 0) {
+      console.warn(`CARDYX-Pool-State-Indexer: Reorg bereinigt poolStates=${poolStatesDeleted}, pairStates=${pairStatesDeleted}`);
+    }
+
     const registry = await pool.query<RegistryRow>(
       `SELECT pool_id, dex, version, pool_address, pool_nft_policy_id, pool_nft_asset_name,
               asset_a_policy_id, asset_a_asset_name, asset_a_decimals,

@@ -40,12 +40,13 @@ export default function TokenActivity({ marketId, ticker, holderCount, adaPriceU
 }) {
   const { language } = useLanguage();
   const { currency } = useCurrency();
-  const [feed, setFeed] = useState<{ marketId: string; trades: LocalTrade[]; error: boolean } | null>(null);
+  const [feed, setFeed] = useState<{ marketId: string; trades: LocalTrade[]; error: boolean; source: string | null } | null>(null);
   const [holderData, setHolderData] = useState<{ marketId: string; mode: 'wallets' | 'groups'; holders: Holder[]; error: boolean } | null>(null);
   const [holderMode, setHolderMode] = useState<'wallets' | 'groups'>('wallets');
   const [holderPage, setHolderPage] = useState(1);
   const [tradePage, setTradePage] = useState(1);
   const trades = feed?.marketId === marketId ? feed.trades : [];
+  const tradeSource = feed?.marketId !== marketId ? 'db-sync' : feed.source === 'cardyx-oura-db-sync' ? 'Oura + db-sync' : feed.source === 'cardyx-pool-state-indexer' ? 'Pool State' : 'db-sync';
   const holders = holderData?.marketId === marketId && holderData.mode === holderMode ? holderData.holders : [];
   const rowsPerPage = pageSize === undefined ? 10 : Math.max(1, Math.min(10, Math.floor(pageSize)));
   const holderPages = Math.max(1, Math.ceil(holders.length / rowsPerPage));
@@ -65,13 +66,13 @@ export default function TokenActivity({ marketId, ticker, holderCount, adaPriceU
         const response = await fetch(`${API_URL}/api/market/trades/${encodeURIComponent(marketId)}`);
         const json = await response.json();
         if (!response.ok || !json.success || !Array.isArray(json.data?.trades)) throw new Error('Local trades unavailable');
-        if (active) setFeed({ marketId, trades: json.data.trades, error: false });
+        if (active) setFeed({ marketId, trades: json.data.trades, error: false, source: typeof json.data.source === 'string' ? json.data.source : null });
       } catch {
-        if (active) setFeed({ marketId, trades: [], error: true });
+        if (active) setFeed({ marketId, trades: [], error: true, source: null });
       }
     };
     void load();
-    const interval = window.setInterval(load, 60_000);
+    const interval = window.setInterval(load, 5_000);
     return () => { active = false; window.clearInterval(interval); };
   }, [marketId, view]);
 
@@ -104,7 +105,7 @@ export default function TokenActivity({ marketId, ticker, holderCount, adaPriceU
   return <div data-paginated={!scrollable && pageSize !== undefined || undefined} data-scrollable={scrollable || undefined} className={`grid min-w-0 gap-4 ${compact || view !== 'all' ? '' : 'xl:grid-cols-[minmax(0,1fr)_360px]'}`}>
     {view !== 'holders' && <section className={`${scrollable ? 'flex min-h-0 flex-col' : ''} overflow-hidden rounded-md border border-white/10 bg-[#0b111b]`} aria-label={language === 'de' ? 'Letzte Trades' : 'Latest trades'}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <div><h2 className="text-sm font-semibold text-white">{language === 'de' ? 'Letzte Trades' : 'Latest trades'}</h2><p className="text-[10px] text-slate-500">CARDYX / db-sync · {ticker}/ADA</p></div>
+        <div><h2 className="text-sm font-semibold text-white">{language === 'de' ? 'Letzte Trades' : 'Latest trades'}</h2><p className="text-[10px] text-slate-500">CARDYX / {tradeSource} · {ticker}/ADA</p></div>
       </div>
       <div className={scrollable ? 'min-h-0 flex-1 overflow-auto overscroll-contain' : 'overflow-x-auto'} tabIndex={scrollable ? 0 : undefined} role={scrollable ? 'region' : undefined} aria-label={scrollable ? (language === 'de' ? 'Trade-Liste' : 'Trade list') : undefined}>
         <table className={`w-full table-fixed text-left ${compact ? 'text-[10px]' : 'min-w-[620px] text-[11px]'}`}>

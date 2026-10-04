@@ -1,0 +1,50 @@
+services:
+  api:
+    environment:
+      CARDYX_OURA_WEBHOOK_TOKEN: ${CARDYX_OURA_WEBHOOK_TOKEN:?Oura webhook token is required}
+
+  oura-config:
+    build: .
+    profiles:
+      - tools
+    restart: "no"
+    environment:
+      DATABASE_URL: ${CARDYX_DATABASE_URL:?CARDYX_DATABASE_URL is required}
+      CARDYX_OURA_WEBHOOK_TOKEN: ${CARDYX_OURA_WEBHOOK_TOKEN:?Oura webhook token is required}
+      OURA_CONFIG_PATH: /run/oura/daemon.toml
+    command: ["node_modules/.bin/tsx", "src/oura-config-cli.ts"]
+    volumes:
+      - /srv/cardyx/compose/oura:/run/oura
+    networks:
+      - database
+
+  oura:
+    image: ghcr.io/txpipe/oura:v2.2.0
+    container_name: cardyx-oura
+    restart: unless-stopped
+    user: "0:0"
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    stop_grace_period: 1m
+    command: ["daemon", "--config", "/run/oura/daemon.toml"]
+    volumes:
+      - /srv/cardyx/compose/oura:/run/oura:ro
+    expose:
+      - "9186"
+    networks:
+      - database
+      - cardano-node
+
+networks:
+  database:
+    external: true
+    name: cardyx-internal
+  cardano-node:
+    external: true
+    name: cardyx-node
